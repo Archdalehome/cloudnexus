@@ -1459,12 +1459,18 @@ async function hasAssignedCustomers(env, username) {
 }
 
 // 权限1「添加订单」是否已生效（异步：需要读取该成员已分配的客户列表）：
-//   · 团队管理员本人固定可添加订单；
+//   · 团队管理员本人（团队账号）：
+//       - **专业版**：**不再录入订单** —— 登录后订单列表上方不显示「添加新订单」录入区，
+//         接口（POST /api/todos）同样拦截；订单由团队成员录入；
+//       - **试用账号**（未订阅 / 订阅已到期）：保留录单能力（客户名称手工填写，自动记入客户
+//         列表）—— 试用期没有「成员管理」，否则注册后将无任何业务可用；
 //   · 普通成员（原业务部）：**已分配客户即可添加订单** —— 有客户时登录后订单列表上方显示
 //     「添加新订单」录入区；没有客户则默认无添加订单功能；
 //   · 其他历史角色（业务主管 / 生产部 / 部门主管 / 总经理等）按 canPlaceOrder 的历史规则。
 async function canAddOrderNow(env, user) {
   if (!user) return false;
+  // 团队管理员本人（团队账号）：专业版不录入订单（由成员录入）；试用账号保留录单能力
+  if (isTeamAdmin(user.role)) return !isProTeam(user);
   if (isMemberRole(user.role)) return hasAssignedCustomers(env, user.username);
   return canPlaceOrder(user);
 }
@@ -3223,9 +3229,19 @@ async function handleApi(request, env, pathname) {
   if (pathname === "/api/todos" && method === "POST") {
     const user = await getCurrentUser(request, env);
     if (!user) return json({ error: "未登录" }, 401);
-    // 权限1「添加订单」：团队管理员本人固定有；普通成员（原业务部）**已分配客户即可添加订单**
-    //（无客户则默认无添加订单功能）；历史「部门主管 / 总经理」固定不录入订单
+    // 权限1「添加订单」：普通成员（原业务部）**已分配客户即可添加订单**（无客户则默认无添加订单
+    // 功能）；**专业版**团队管理员本人（团队账号）不录入订单（订单由成员录入；试用账号仍可录入）；
+    // 历史「部门主管 / 总经理」固定不录入订单
     if (!(await canAddOrderNow(env, user))) {
+      if (isTeamAdmin(user.role)) {
+        return json(
+          {
+            error:
+              "专业版团队账号不录入订单：请在「成员管理」中添加成员，由成员登录后录入订单",
+          },
+          403
+        );
+      }
       if (isMemberRole(user.role)) {
         return json(
           {

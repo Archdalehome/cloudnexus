@@ -31,6 +31,12 @@ const commonStyle = `
     border-color: #2383e2;
     box-shadow: 0 0 0 2px rgba(35,131,226,0.15);
   }
+  /* 手机 / 平板基础自适应：
+     ① -webkit-text-size-adjust 防止横竖屏切换时字号被系统自动放大；
+     ② 长文本 / 长链接可换行，避免窄屏出现横向滚动条。 */
+  html { -webkit-text-size-adjust: 100%; }
+  body { overflow-wrap: break-word; }
+  img, video { max-width: 100%; height: auto; }
 `;
 
 // ============ 登录页 ============
@@ -243,6 +249,25 @@ ${commonStyle}
     padding: 2px 8px;
     margin-left: 6px;
     vertical-align: middle;
+  }
+  /* ================= 手机 / 平板自适应（登录 / 注册页） ================= */
+  @media (max-width: 640px) {
+    body { padding: 14px; align-items: flex-start; }
+    .card { padding: 24px 18px; border-radius: 10px; max-width: 100%; }
+    h1 { font-size: 19px; }
+    .subtitle { margin-bottom: 20px; }
+    /* 「标签 + 输入框」同行显示在窄屏换为上下两行，输入框占满宽度 */
+    .field-inline { flex-wrap: wrap; }
+    .field-inline > label { width: auto; text-align: left; }
+    .field-inline > input { max-width: 100%; }
+    #submitBtn { width: 100%; }
+    /* 输入框字号 16px：iOS 聚焦时不会自动放大页面 */
+    input, textarea, select { font-size: 16px; }
+    .switch-row { margin-top: 12px; }
+  }
+  @media (max-width: 380px) {
+    .card { padding: 20px 14px; }
+    h1 { font-size: 17px; }
   }
 </style>
 </head>
@@ -1543,6 +1568,80 @@ ${commonStyle}
   /* 更窄时把 PO# 的下限略微放宽，优先保留生产方标签与展开箭头 */
   @container (max-width: 420px) {
     .todo-title { min-width: 4.5em; }
+  }
+
+  /* ================= 手机 / 平板自适应（媒体查询；统一放在样式末尾，避免被上面的同优先级规则覆盖） ================= */
+
+  /* 平板（≤ 900px）：顶栏与内容留白收紧 */
+  @media (max-width: 900px) {
+    .topbar { padding: 10px 14px; }
+    .container { padding: 20px 16px 72px; }
+    .btn-ghost { padding: 6px 10px; }
+  }
+
+  /* 手机（≤ 700px）：顶栏换行、录入区单列、订单详情与弹窗适配 */
+  @media (max-width: 700px) {
+    .topbar { flex-wrap: wrap; gap: 6px 10px; }
+    .topbar .brand { font-size: 15px; }
+    /* 顶栏按钮换到第二行、右对齐；手指点按区域靠右更顺手 */
+    .topbar .user-area { width: 100%; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+    .btn-ghost { padding: 6px 8px; font-size: 12.5px; }
+    .container { padding: 14px 12px 64px; }
+
+    /* 录入区：每个字段占满整行（币种 + 金额并排一行），按钮整行，避免横向挤压 */
+    .add-row { gap: 8px; margin-bottom: 18px; }
+    .add-row input,
+    .add-row select,
+    .add-row .customer-select,
+    .add-row .customer-input,
+    .add-row .due-input,
+    .add-row .date-field { flex: 1 1 100%; max-width: 100%; }
+    .add-row input.title-input,
+    .add-row input.url-input { flex: 1 1 100%; }
+    .add-row .currency-select { flex: 0 0 42%; max-width: 42%; }
+    .add-row .amount-input { flex: 1 1 auto; max-width: none; }
+    .add-row.trial-row .customer-input { flex: 1 1 100%; max-width: 100%; }
+    .add-row .btn-add { flex: 1 1 100%; padding: 12px 18px; }
+
+    /* 订单行：留白与展开区缩进收紧，把宽度留给 PO# 与标签 */
+    .todo-header { padding: 12px; gap: 6px; }
+    .todo-body-inner { padding: 12px 12px 14px 12px; }
+    .producer-select { max-width: 100%; }
+    /* 备注区：状态提示单独一行，按钮换行不挤压 */
+    .body-actions { flex-wrap: wrap; }
+    .body-actions .save-status { width: 100%; margin-right: 0; order: 3; }
+
+    /* 弹窗：贴边显示、内容超高时内部滚动（键盘弹出也能操作） */
+    .modal-mask { padding: 10px; align-items: flex-start; }
+    .modal { max-width: 100%; max-height: 92vh; padding: 18px 14px; border-radius: 10px; }
+    .modal h2 { font-size: 17px; margin-bottom: 14px; }
+    .modal-actions { flex-wrap: wrap; }
+    .mention-picker { min-width: 0; max-width: calc(100vw - 40px); }
+
+    /* 成员管理：成员区块改为上下堆叠，权限开关允许换行 */
+    .user-row { flex-direction: column; align-items: stretch; gap: 8px; }
+    .user-row-actions { width: 100%; flex-wrap: wrap; justify-content: space-between; }
+    .order-perm-col { width: 100%; }
+    .order-perm, .order-perm-static { white-space: normal; }
+    .user-row-btns { flex-direction: row; }
+    .user-row-btns button { width: auto; }
+    .customer-add-row { flex-wrap: wrap; }
+    .customer-add-row select { flex: 1 1 100%; }
+
+    /* 表单控件字号 16px：iOS 聚焦时不会自动放大页面 */
+    input, textarea, select,
+    .add-row input, .add-row select, .note-input,
+    .customer-select, .customer-input, .status-select, .producer-select { font-size: 16px; }
+  }
+
+  /* 小屏手机（≤ 420px）：进一步压缩留白，按钮整行更好点按 */
+  @media (max-width: 420px) {
+    .topbar { padding: 10px; }
+    .container { padding: 12px 10px 60px; }
+    .section-title { margin: 14px 0 8px; }
+    .empty { padding: 40px 12px; }
+    .todo-header { padding: 10px; }
+    .load-more-btn { width: 100%; }
   }
 
 </style>
@@ -4452,6 +4551,39 @@ ${commonStyle}
     font-size: 12px;
     color: #9b9a97;
     line-height: 1.6;
+  }
+  /* ================= 手机 / 平板自适应（超级管理员控制台） ================= */
+  @media (max-width: 900px) {
+    .topbar { padding: 10px 14px; }
+    .container { padding: 20px 16px 72px; }
+    .btn-ghost { padding: 6px 10px; }
+  }
+  @media (max-width: 700px) {
+    /* 顶栏按钮换到第二行右对齐；团队卡片与按钮按整行排布 */
+    .topbar { flex-wrap: wrap; gap: 6px 10px; }
+    .topbar .brand { font-size: 15px; }
+    .topbar .user-area { width: 100%; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+    .btn-ghost { padding: 6px 8px; font-size: 12.5px; }
+    .container { padding: 14px 12px 64px; }
+    .stat-card { flex: 1 1 calc(50% - 5px); }
+    .toolbar { flex-wrap: wrap; }
+    .toolbar input { flex: 1 1 100%; max-width: 100%; }
+    .team-actions button { flex: 1 1 auto; }
+    /* 邮件设置等并排字段（.field-row）在窄屏改为上下排列 */
+    .field-row { flex-direction: column; gap: 0; }
+    .quick-row button { flex: 1 1 auto; }
+    .modal-mask { padding: 10px; align-items: flex-start; }
+    .modal { max-width: 100%; max-height: 92vh; padding: 18px 14px; border-radius: 10px; }
+    .modal h2 { font-size: 17px; margin-bottom: 14px; }
+    .modal-actions { flex-wrap: wrap; }
+    /* 表单控件字号 16px：iOS 聚焦时不会自动放大页面 */
+    input, textarea, select { font-size: 16px; }
+  }
+  @media (max-width: 420px) {
+    .topbar { padding: 10px; }
+    .container { padding: 12px 10px 60px; }
+    .stat-card { flex: 1 1 100%; }
+    .team-actions button { flex: 1 1 100%; }
   }
 </style>
 </head>
