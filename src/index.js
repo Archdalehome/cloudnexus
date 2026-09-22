@@ -3624,7 +3624,12 @@ export default {
 
     if (pathname === "/todos") {
       const g = await getGlobalSettings(env);
-      return new Response(todoPage(g.favicon), {
+      // 「添加新订单」录入区是否渲染：**由服务端按当前用户权限决定** ——
+      // 避免「无录单权限的用户」（专业版团队管理员 / 无客户的成员 / 观察类等）在登录瞬间
+      // 先看到录入框、随后才被前端脚本隐藏的闪现（FOUC）。
+      const user = await getCurrentUser(request, env);
+      const canPlaceOrder = user ? await canAddOrderNow(env, user) : false;
+      return new Response(todoPage(g.favicon, canPlaceOrder), {
         headers: { "Content-Type": "text/html; charset=utf-8" },
       });
     }

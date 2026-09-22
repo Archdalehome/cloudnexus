@@ -593,7 +593,11 @@ ${canRegister ? LOGIN_REGISTER_CARD : ""}
 }
 
 // ============ 待办事件页 ============
-export function todoPage(favicon) {
+// canPlaceOrder：当前用户是否有「添加新订单」录入权限（由服务端在渲染时判定；
+//   false 时直接把录入区渲染为 display:none，避免登录瞬间的闪现；undefined/未传则按显示处理）
+export function todoPage(favicon, canPlaceOrder) {
+  // 省略参数时按「显示」处理（与历史行为一致）；显式 false 才隐藏
+  const addRowHidden = canPlaceOrder === false;
   return `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -1668,7 +1672,7 @@ ${commonStyle}
 
 
   <div class="container">
-    <div class="add-row">
+    <div class="add-row"${addRowHidden ? ' style="display:none"' : ''}>
       <select id="newCustomer" class="customer-select">
         <option value="">选择客户</option>
       </select>
@@ -2090,15 +2094,18 @@ ${commonStyle}
     setInterval(loadMentions, 60000);
     // 预加载生产方列表：团队管理员/总经理的下拉需要，其他角色也会用它兜底显示待办卡片上的生产方简称
     await ensureProducers();
-    // 生产单下单权限（「成员管理」里逐个开关）：无权限时不显示录入区，
-    // 录入接口同样会拦截；团队账号本人固定有权限。
     // 普通成员（原业务部）的新权限「是否可查看全部订单」（**默认「是」**）：= 是 → 清单显示
     // 本团队全部订单（他人录入的订单为只读：不能改状态 / 不能删除，但可添加备注）；= 否 → 只看自己的
     // 注：与「客户列表」无关（客户只决定「添加新订单」录入区是否显示）
     canViewAllOrders = (currentUser.role === 'editor' || currentUser.role === 'member') &&
       currentUser.canViewAllOrders !== false;
-    if (!currentUser.canPlaceOrder) {
-      document.querySelector('.add-row').style.display = 'none';
+    // 「添加新订单」录入区（录单权限）：
+    //   · 服务端渲染时已按权限决定是否输出 display:none —— 无录单权限的用户（专业版团队管理员 /
+    //     无客户的成员 / 观察类等）登录瞬间**不会再闪现**录入框；
+    //   · 这里再按 /api/me 的最新结果同步一次，作为兜底（权限刚变更 / 页面被缓存等情况）。
+    const addRowEl = document.querySelector('.add-row');
+    if (addRowEl) {
+      addRowEl.style.display = currentUser.canPlaceOrder ? '' : 'none';
     }
 
     // 日期框：自绘 yyyy/mm/dd 提示
