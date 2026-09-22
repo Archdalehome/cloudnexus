@@ -1620,7 +1620,7 @@ ${commonStyle}
         <input type="text" id="newUserName" placeholder="用户名" style="margin-bottom:8px">
         <input type="password" id="newUserPwd" placeholder="密码" style="margin-bottom:8px">
         <input type="text" id="newUserPosition" placeholder="职位（手动输入，如：业务员 / 采购 / 主管）" maxlength="20" style="width:100%;padding:9px 12px;border:1px solid #e0e0dc;border-radius:6px;font-size:14px;background:#fff;color:#37352f;outline:none">
-        <div class="order-perm-hint" style="margin-top:6px">新增成员统一为普通成员：权限1「添加订单」自动（分配客户后即可添加订单），权限2「查看客户订单」/ 权限3「下生产订单」/ 权限4「查看生产订单」/ 权限5「更新订单状态」（= 是 时订单列表与团队管理员相同）在下方成员列表中逐个设置</div>
+        <div class="order-perm-hint" style="margin-top:6px">新增成员统一为普通成员：权限1「添加订单」自动（分配客户后即可录入订单）；「是否可查看全部订单」（**默认「是」**：可查看本团队全部订单）/ 权限2「查看客户订单」/ 权限3「下生产订单」/ 权限4「查看生产订单」/ 权限5「更新订单状态」（= 是 时订单列表与团队管理员相同）在下方成员列表中逐个设置</div>
       </div>
       <button class="btn-primary-sm" id="btnAddUser" style="width:100%">添加成员</button>
       <div class="msg" id="userMsg"></div>
@@ -1894,6 +1894,9 @@ ${commonStyle}
   let isDeptManager = false; // 部门主管（同总经理；另有「是否可查看客户订单 / 采购订单」两个开关）
   let isTodoManager = false; // 团队管理员 / 总经理 / 部门主管：可管理待办（生产方、删除、编辑等）
   let canChangeStatus = false; // 可改变待办状态：仅团队管理员 / 总经理（部门主管为只读状态徽章，与业务部一致）
+  // 普通成员的新权限「是否可查看全部订单」（**默认「是」**）：= 是 → 清单显示本团队全部订单
+  //（他人录入的订单为只读：不能改状态 / 不能删除，但可添加备注）；= 否 → 只能查看自己录入的订单
+  let canViewAllOrders = false;
   let showAllUsers = false; // 团队管理员 / 总经理 / 观察类：显示全部用户的待办
   // 「已完成」折叠显示：默认只渲染 5 条，点「加载更多」每次再多显示 20 条（避免一次渲染太多导致卡顿）
   const DONE_PAGE_STEP = 20;
@@ -1990,6 +1993,11 @@ ${commonStyle}
     await ensureProducers();
     // 生产单下单权限（「成员管理」里逐个开关）：无权限时不显示录入区，
     // 录入接口同样会拦截；团队账号本人固定有权限。
+    // 普通成员（原业务部）的新权限「是否可查看全部订单」（**默认「是」**）：= 是 → 清单显示
+    // 本团队全部订单（他人录入的订单为只读：不能改状态 / 不能删除，但可添加备注）；= 否 → 只看自己的
+    // 注：与「客户列表」无关（客户只决定「添加新订单」录入区是否显示）
+    canViewAllOrders = (currentUser.role === 'editor' || currentUser.role === 'member') &&
+      currentUser.canViewAllOrders !== false;
     if (!currentUser.canPlaceOrder) {
       document.querySelector('.add-row').style.display = 'none';
     }
@@ -2361,18 +2369,21 @@ ${commonStyle}
     // 业务主管：待办本身只读（无删除按钮），但可添加备注
     // 已进入「进行中/已完成」状态的事件不可删除（含管理员，避免误删）
     // 是否本人录入的订单：普通成员在「客户列表为空 → 查看全部订单」时能看到他人的订单，
-    // 这些订单在其清单里为只读（不显示「删除订单 / 添加备注」，避免操作被接口拒绝）
+    // 这些订单在其清单里为只读（不能改状态 / 不能删除他人的订单）
     const isOwnOrder = !t.owner || t.owner === currentUser.username;
-    // 可对该订单做备注 / 删除操作的身份：观察类角色（业务主管 / 生产部 / 生产方 / 客户，只读但可备注）、
-    // 待办管理者（团队管理员 / 总经理 / 部门主管）、订单本人
-    const canOperateOrder = isObserver || isTodoManager || isOwnOrder;
+    // 「删除订单」的身份：待办管理者（团队管理员 / 总经理 / 部门主管）、订单本人；
+    // 观察类角色（业务主管 / 生产部 / 生产方 / 客户）为只读，不显示删除按钮
+    // 「添加备注」的身份：备注为**追加式**，任何用户都可为清单里可见的订单添加备注 ——
+    //   观察类角色、待办管理者、订单本人，以及「是否可查看全部订单」= 是（默认）的普通成员
+    //  （这类成员的清单里会显示本团队全部订单：只读，但可为他人的订单添加备注）
+    const canAddNote = isObserver || isTodoManager || isOwnOrder || canViewAllOrders;
     const canDelete = !isObserver && st === 'pending' && (isTodoManager || isOwnOrder);
 
     const delBtn = canDelete
       ? \`<button class="btn-danger" data-del="\${t.id}">删除订单</button>\`
       : '';
-    // 已完成的事件不可再添加备注；无操作权限的订单（他人订单）也不显示备注框
-    const noteAddBlock = (st === 'done' || !canOperateOrder)
+    // 已完成的事件不可再添加备注；其余可见订单都显示备注框
+    const noteAddBlock = (st === 'done' || !canAddNote)
       ? ''
       : \`<div class="note-add">
               <textarea class="note-input" data-note-input="\${t.id}" placeholder="添加备注（添加后不可删除；输入 @ 可提醒团队成员）..."></textarea>
@@ -3393,18 +3404,22 @@ ${commonStyle}
         };
         const isDeptMgrRow = u.role === 'deptmanager';
         const isSuperviewerRow = u.role === 'superviewer';
-        // 权限1「添加订单」：自动 —— 该成员的客户列表里有客户即可添加订单（只显示自己的订单）；
-        // 客户列表为空时权限为「无」：不显示「添加新订单」录入区，但可以**查看全部订单**（只读）
+        // 权限1「添加订单」：自动 —— 该成员的客户列表里有客户才可录入订单（无客户则不显示录入区）；
+        // **客户列表与订单可见范围无关**：可见范围由新权限「是否可查看全部订单」（默认「是」）决定
         const myCustomers = customerMap[u.username] || [];
         const hasCustomers = myCustomers.length > 0;
         const orderPermBlock = noOrderPerm ? '' : (isMemberRow
           ? '<div class="order-perm-col">' +
-              '<span class="order-perm-static" title="权限1「添加订单」自动生效：客户列表里有客户 → 可添加订单（并只看自己的订单）；没有客户 → 权限为「无」、不显示录入区，但可以查看全部订单（只读）">' +
+              '<span class="order-perm-static" title="权限1「添加订单」自动生效：客户列表里有客户 → 可录入订单（显示「添加新订单」录入区）；没有客户 → 权限为「无」、不显示录入区（与「查看全部订单」无关）">' +
                 '添加订单：<b>' + (hasCustomers ? '有' : '无') + '</b>' +
                 (hasCustomers
                   ? '（已有 ' + myCustomers.length + ' 个客户）'
-                  : '（可查看全部订单）') +
+                  : '（未分配客户，不能录入订单）') +
               '</span>' +
+              permToggle('data-canviewallorders', '是否可查看全部订单', u.canViewAllOrders !== false, '是', '否',
+                '「是否可查看全部订单」= 是（默认）时该成员可查看本团队全部订单（含待确认）：' +
+                '他人录入的订单在其清单里为只读（不能改状态 / 不能删除），但可添加备注；' +
+                '= 否 时该成员只能查看自己录入的订单（与「客户列表」无关）') +
               permToggle('data-canvieworder', '是否可以查看客户订单', u.canViewCustomerOrder === true, '是', '否') +
               permToggle('data-canpurchase', '是否可以下生产订单', u.canPurchase === true, '是', '否') +
               permToggle('data-canviewpurchase', '是否可以查看生产订单', u.canViewPurchaseOrder === true, '是', '否') +
@@ -3468,10 +3483,12 @@ ${commonStyle}
       });
       // 成员备注（点文字直接修改）
       bindDescEditors(list, () => loadUsers());
-      // 权限开关（勾选后立即保存）：权限2 查看客户订单 / 权限3 下生产订单 / 权限4 查看生产订单 /
-      // 权限5 更新订单状态（= 有 时订单列表与团队管理员相同）；历史角色的「生产单下单权限」也走同一接口
+      // 权限开关（勾选后立即保存）：新权限「是否可查看全部订单」（默认「是」）/ 权限2 查看客户订单 /
+      // 权限3 下生产订单 / 权限4 查看生产订单 / 权限5 更新订单状态（= 有 时订单列表与团队管理员相同）；
+      // 历史角色的「生产单下单权限」也走同一接口
       const permAttrs = [
         ['data-canorder', 'canPlaceOrder'],
+        ['data-canviewallorders', 'canViewAllOrders'],
         ['data-canpurchase', 'canPurchase'],
         ['data-canvieworder', 'canViewCustomerOrder'],
         ['data-canviewpurchase', 'canViewPurchaseOrder'],
@@ -4450,6 +4467,7 @@ ${commonStyle}
       <span id="currentUser"></span>
       <button class="btn-ghost" id="btnMail">邮件设置</button>
       <button class="btn-ghost" id="btnSite">系统设置</button>
+      <button class="btn-ghost" id="btnAdminPwd">重置密码</button>
       <button class="btn-ghost" id="btnRefresh">刷新</button>
       <button class="btn-ghost" id="btnLogout">退出</button>
     </div>
@@ -4531,6 +4549,31 @@ ${commonStyle}
       <div class="modal-actions">
         <button class="btn-secondary" data-close="remarkModal">取消</button>
         <button class="btn-primary-sm" id="btnConfirmRemark">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 重置密码弹窗（超级管理员重置**自己**的登录密码） -->
+  <div class="modal-mask" id="adminPwdModal">
+    <div class="modal">
+      <h2>重置密码</h2>
+      <div class="field">
+        <label>当前账号</label>
+        <input type="text" id="adminPwdUser" readonly style="background:#f7f7f5">
+      </div>
+      <div class="field">
+        <label>新密码</label>
+        <input type="password" id="adminPwdNew" placeholder="请输入新密码（至少 6 位）">
+      </div>
+      <div class="field">
+        <label>确认新密码</label>
+        <input type="password" id="adminPwdConfirm" placeholder="请再次输入新密码">
+      </div>
+      <div class="hint-line">重置的是<b>当前登录的超级管理员账号</b>的登录密码（无需输入原密码）；重置后请用新密码登录，忘记请妥善保存。</div>
+      <div class="msg" id="adminPwdMsg"></div>
+      <div class="modal-actions">
+        <button class="btn-secondary" data-close="adminPwdModal">取消</button>
+        <button class="btn-primary-sm" id="btnConfirmAdminPwd">确定重置</button>
       </div>
     </div>
   </div>
@@ -5320,6 +5363,44 @@ ${commonStyle}
         '已彻底删除团队「' + (del.teamName || t.teamName) + '」：共删除账号 ' + (del.accounts || 0) +
         ' 个（成员 ' + (del.members || 0) + ' / 生产方 ' + (del.producers || 0) + ' / 客户 ' + (del.customers || 0) +
         '）、订单（待办）' + (del.todos || 0) + ' 条及全部相关数据';
+    } catch (err) {
+      msg.className = 'msg err';
+      msg.textContent = err.message;
+    }
+  });
+
+  // ---------- 重置密码（超级管理员重置**自己**的登录密码） ----------
+  // 说明：超级管理员本身就是系统最高权限账号（可重置任意团队的密码），因此这里无需输入原密码，
+  //      仅需「新密码 + 确认新密码」两步校验；接口 /api/admin/password 同样限超级管理员本人。
+  document.getElementById('btnAdminPwd').addEventListener('click', function () {
+    const msg = document.getElementById('adminPwdMsg');
+    msg.className = 'msg';
+    msg.textContent = '';
+    document.getElementById('adminPwdUser').value =
+      document.getElementById('currentUser').textContent || 'admin';
+    document.getElementById('adminPwdNew').value = '';
+    document.getElementById('adminPwdConfirm').value = '';
+    document.getElementById('adminPwdModal').classList.add('show');
+  });
+  document.getElementById('btnConfirmAdminPwd').addEventListener('click', async function () {
+    const msg = document.getElementById('adminPwdMsg');
+    msg.className = 'msg';
+    const newPwd = document.getElementById('adminPwdNew').value;
+    const confirmPwd = document.getElementById('adminPwdConfirm').value;
+    if (!newPwd) { msg.className = 'msg err'; msg.textContent = '请输入新密码'; return; }
+    if (newPwd.length < 6) { msg.className = 'msg err'; msg.textContent = '密码至少 6 位'; return; }
+    if (newPwd !== confirmPwd) { msg.className = 'msg err'; msg.textContent = '两次输入的密码不一致'; return; }
+    try {
+      await api('/api/admin/password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ newPassword: newPwd, confirmPassword: confirmPwd }),
+      });
+      msg.className = 'msg ok';
+      msg.textContent = '重置成功：请使用新密码登录';
+      setTimeout(function () {
+        document.getElementById('adminPwdModal').classList.remove('show');
+      }, 1000);
     } catch (err) {
       msg.className = 'msg err';
       msg.textContent = err.message;

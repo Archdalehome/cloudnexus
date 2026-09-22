@@ -1094,6 +1094,8 @@ async function listUsers(env, teamId) {
         canViewPurchaseOrder: canViewPurchaseOrder(u),
         // 权限5「是否可以更新订单状态」（= 有 时订单列表与团队管理员相同）
         canUpdateStatus: canUpdateOrderStatus(u),
+        // 权限「是否可查看全部订单」（普通成员，**默认「是」**：可查看本团队全部订单）
+        canViewAllOrders: canViewAllTeamOrders(u),
       };
       // 生产部（含计划部 / 采购部 / 品质部 / 财务部）附带「可观察生产方」id 列表
       if (u.role === "restricted") {
@@ -1486,6 +1488,18 @@ function canUpdateOrderStatus(user) {
   return false; // 部门主管（历史账号）的状态为只读徽章，不能改变状态
 }
 
+// 权限「是否可查看全部订单」（普通成员，**默认「是」**）：
+//   · = 是（字段未设置或为 true）：该成员的订单列表显示**本团队全部订单**（含待确认）——
+//     他人录入的订单在其清单里为只读（不能改状态 / 不能指定生产方 / 不能删除），但**可添加备注**；
+//   · = 否：只能查看**自己录入的订单**（自己的订单可正常编辑 / 删除）。
+// 注：「客户列表」只决定权限1「添加订单」是否生效（有客户才能录入订单），**不再是**可见范围的依据。
+function canViewAllTeamOrders(user) {
+  if (!user) return false;
+  if (isMemberRole(user.role)) return user.canViewAllOrders !== false;
+  // 团队管理员 / 总经理 / 部门主管（历史账号）固定可查看本团队全部订单
+  return canManageTodos(user.role);
+}
+
 // 改变待办状态（待确认 / 进行中 / 已完成）：
 //   团队管理员 / 总经理，以及权限5「是否可以更新订单状态」= 有 的普通成员
 // （部门主管虽然能查看全部待办、指定生产方、删除待办，但状态在其清单里为**只读固定显示**，
@@ -1502,6 +1516,19 @@ function canManageOthersTodos(user) {
   if (!user) return false;
   if (canManageTodos(user.role)) return true;
   return isMemberRole(user.role) && user.canUpdateStatus === true;
+}
+
+// 可对**他人**的待办「添加备注」（备注为追加式：任何用户都可为清单里**可见的订单**添加备注）：
+//   · 观察类角色（业务主管 / 生产部 / 生产方 / 客户）：可见本团队（授权范围内）的他人订单，可备注；
+//   · 待办管理者（团队管理员 / 总经理 / 部门主管）与权限5 = 有 的普通成员：可备注本团队任意订单；
+//   · 普通成员：新权限「是否可查看全部订单」= 是（**默认**）时清单里会显示他人录入的订单，
+//     因此也可为这些订单添加备注；= 否 时只看得见自己的订单，按「自己的待办」处理。
+function canNoteOthersTodos(user) {
+  if (!user) return false;
+  if (isObserverRole(user.role)) return true;
+  if (canManageOthersTodos(user)) return true;
+  if (isMemberRole(user.role)) return canViewAllTeamOrders(user);
+  return false;
 }
 
 // 部门主管（deptmanager）：功能参照「总经理」，另有 2 个可逐个开关的「查看」权限
@@ -1835,6 +1862,9 @@ async function handleApi(request, env, pathname) {
     info.canViewPurchaseOrder = canViewPurchaseOrder(user);
     // 权限5「是否可以更新订单状态」= 有 时，订单列表显示与功能与团队管理员相同
     info.canUpdateStatus = canUpdateOrderStatus(user);
+    // 权限「是否可查看全部订单」（普通成员，**默认「是」**）：= 是 → 可见本团队全部订单（只读，可备注）；
+    // = 否 → 只能查看自己录入的订单（与「客户列表」无关：客户只决定能否录入订单）
+    info.canViewAllOrders = canViewAllTeamOrders(user);
     if (isTeamAdmin(user.role)) {
       info.teamId = user.teamId || user.username;
       info.teamName = user.teamName || user.username;
@@ -1879,6 +1909,30 @@ async function handleApi(request, env, pathname) {
     user.password = await hashPassword(newPassword);
     await env.TODO_KV.put(`user:${user.username}`, JSON.stringify(user));
     return json({ ok: true });
+  }
+
+  // ---- 超级管理员：重置**自己的**登录密码（控制台顶栏「重置密码」；无需原密码）----
+  // 说明：超级管理员本就是系统的最高权限账号（可重置任意团队账号的密码），
+  //       因此在登录状态（会话有效）下允许直接设置新密码；需二次确认（确认新密码）。
+  if (pathname === "/api/admin/password" && method === "POST") {
+    const user = await getCurrentUser(request, env);
+    if (!user) return json({ error: "未登录" }, 401);
+    if (!isSuperAdmin(user.role)) return json({ error: "无权限" }, 403);
+    const { newPassword, confirmPassword } = await readBody(request);
+    const pwd = String(newPassword || "");
+    if (!pwd.trim()) return json({ error: "请输入新密码" }, 400);
+    if (pwd.length < 6) return json({ error: "密码至少 6 位" }, 400);
+    if (confirmPassword !== undefined && pwd !== String(confirmPassword)) {
+      return json({ error: "两次输入的密码不一致" }, 400);
+    }
+    const raw = await env.TODO_KV.get(`user:${user.username}`);
+    if (!raw) return json({ error: "账号不存在" }, 404);
+    const admin = JSON.parse(raw);
+    admin.password = await hashPassword(pwd);
+    // 记录最近一次重置时间（便于排查，非必需字段）
+    admin.passwordUpdatedAt = new Date().toISOString();
+    await env.TODO_KV.put(`user:${user.username}`, JSON.stringify(admin));
+    return json({ ok: true, username: user.username });
   }
 
   // ---- 站点 / 团队设置 ----
@@ -2545,6 +2599,9 @@ async function handleApi(request, env, pathname) {
   //     canUpdateStatus         权限5「是否可以更新订单状态」（= 有 时订单列表显示与功能与团队管理员相同：
   //                             可见全部订单、可改状态 / 指定生产方 / 修改待确认订单 / 删除 / 备注，
   //                             且订单号与「自产单 / 外购单」标签可点击）
+  //     canViewAllOrders        新权限「是否可查看全部订单」（普通成员，**默认「是」**）：
+  //                             = 是 → 可见本团队全部订单（他人录入的订单为只读，可添加备注）；
+  //                             = 否 → 只能查看自己录入的订单（与「客户列表」无关）
   //     canPlaceOrder           历史字段：普通成员的权限1「添加订单」由「是否已分配客户」自动决定，
   //                             不接受在此设置
   if (
@@ -2565,7 +2622,15 @@ async function handleApi(request, env, pathname) {
     const hasViewCustomer = typeof body.canViewCustomerOrder === "boolean";
     const hasViewPurchase = typeof body.canViewPurchaseOrder === "boolean";
     const hasUpdateStatus = typeof body.canUpdateStatus === "boolean";
-    if (!hasPlace && !hasPurchase && !hasViewCustomer && !hasViewPurchase && !hasUpdateStatus) {
+    const hasViewAllOrders = typeof body.canViewAllOrders === "boolean";
+    if (
+      !hasPlace &&
+      !hasPurchase &&
+      !hasViewCustomer &&
+      !hasViewPurchase &&
+      !hasUpdateStatus &&
+      !hasViewAllOrders
+    ) {
       return json({ error: "请传入 true（有）或 false（无）" }, 400);
     }
     const targetUser = await getTeamMember(env, target, teamIdOf(user));
@@ -2587,6 +2652,19 @@ async function handleApi(request, env, pathname) {
           error:
             memberRoleLabel(targetUser) +
             "成员不需要「生产单下单权限」（固定不录入订单），无需设置",
+        },
+        400
+      );
+    }
+    // 权限「是否可查看全部订单」（默认「是」）仅适用于普通成员（原业务部）：
+    // 历史角色（总经理 / 部门主管 / 业务主管 / 生产部 / 生产方 / 客户）的可见范围由角色固定
+    if (hasViewAllOrders && !isMemberRole(targetUser.role)) {
+      return json(
+        {
+          error:
+            "「是否可查看全部订单」仅适用于普通成员（原业务部）（当前成员："
+            + memberRoleLabel(targetUser)
+            + "）",
         },
         400
       );
@@ -2637,6 +2715,7 @@ async function handleApi(request, env, pathname) {
     if (hasViewCustomer) targetUser.canViewCustomerOrder = body.canViewCustomerOrder;
     if (hasViewPurchase) targetUser.canViewPurchaseOrder = body.canViewPurchaseOrder;
     if (hasUpdateStatus) targetUser.canUpdateStatus = body.canUpdateStatus;
+    if (hasViewAllOrders) targetUser.canViewAllOrders = body.canViewAllOrders;
     await env.TODO_KV.put(`user:${target}`, JSON.stringify(targetUser));
     return json({
       ok: true,
@@ -2645,6 +2724,7 @@ async function handleApi(request, env, pathname) {
       canViewCustomerOrder: canViewCustomerOrder(targetUser),
       canViewPurchaseOrder: canViewPurchaseOrder(targetUser),
       canUpdateStatus: canUpdateOrderStatus(targetUser),
+      canViewAllOrders: canViewAllTeamOrders(targetUser),
     });
   }
 
@@ -3114,11 +3194,19 @@ async function handleApi(request, env, pathname) {
         allUsers: true,
       });
     }
-    // 普通成员（原业务部）的订单可见范围由权限1「添加订单」决定：
-    //   · 已分配客户（权限1 = 有）：只返回**自己的订单**，并携带 owner（清单里每条订单都显示录入者）；
-    //   · 客户列表为空（权限1 = 无）：可**查看本团队全部订单**（只读 —— 不能改状态、
-    //     不能删除他人的订单、也不能给他人的订单加备注，接口层同样做了限制）。
-    if (isMemberRole(user.role) && !(await hasAssignedCustomers(env, user.username))) {
+    // 普通成员（原业务部）的订单可见范围由新权限「是否可查看全部订单」决定（**默认「是」**）：
+    //   · 是（默认）：可**查看本团队全部订单**（只读 —— 不能改状态、不能指定生产方、
+    //     不能删除他人的订单）；**备注为追加式**：可为清单里的任意订单（含他人录入的）添加备注；
+    //   · 否：只返回**自己的订单**（可正常编辑 / 删除），并携带 owner（清单里每条订单都显示录入者）。
+    // 注：「客户列表」只决定权限1「添加订单」是否生效（有客户才显示录入区），与可见范围无关。
+    if (isMemberRole(user.role) && !canViewAllTeamOrders(user)) {
+      const own = await getTodos(env, user.username);
+      return json({
+        todos: own.map((t) => Object.assign({}, t, { owner: user.username })),
+        readonly: false,
+      });
+    }
+    if (isMemberRole(user.role)) {
       return json({
         todos: await getAllTodos(env, teamId, false),
         readonly: true,
@@ -3236,9 +3324,13 @@ async function handleApi(request, env, pathname) {
     const text = body.text;
     if (!text || !text.trim()) return json({ error: "请输入备注内容" }, 400);
 
-    // 观察类用户/团队管理员/总经理（及权限5 = 有 的成员）可对任意用户的待办添加备注；其他用户仅能对自己的待办添加
+    // 备注为追加式：任何用户都可为**自己可见的订单**添加备注，可操作他人待办的身份包括 ——
+    //   观察类用户（业务主管 / 生产部 / 生产方 / 客户）、团队管理员 / 总经理 / 部门主管
+    //   （及权限5 = 有 的成员），以及「是否可查看全部订单」= 是（默认）的普通成员
+    //   （其订单列表显示本团队全部订单：只读但可追加备注）；
+    // 「是否可查看全部订单」= 否 的普通成员只看得见自己的订单，仅能对自己的待办添加备注。
     let owner = user.username;
-    if (isObserverRole(user.role) || canManageOthersTodos(user)) {
+    if (canNoteOthersTodos(user)) {
       const requested = body.owner || user.username;
       if (requested !== user.username) {
         // 只能操作本团队成员（跨团队不可见）
@@ -3246,6 +3338,8 @@ async function handleApi(request, env, pathname) {
         if (!member) return json({ error: "无权操作该用户的待办" }, 403);
       }
       owner = requested;
+    } else if (body.owner && body.owner !== user.username) {
+      return json({ error: "无权操作该用户的待办" }, 403);
     }
 
     const todos = await getTodos(env, owner);
