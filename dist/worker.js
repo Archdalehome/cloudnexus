@@ -3577,7 +3577,7 @@ ${ve}
       msg.textContent = '请输入脱敏订单文件链接';
       return;
     }
-    if (!/^https?:///i.test(link)) {
+    if (!/^https?:\\/\\//i.test(link)) {
       msg.className = 'msg err';
       msg.textContent = '脱敏订单文件链接需以 http:// 或 https:// 开头';
       return;
