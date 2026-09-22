@@ -1092,6 +1092,8 @@ async function listUsers(env, teamId) {
         canViewCustomerOrder: canViewCustomerOrder(u),
         // 权限4「是否可以查看生产订单」（点「自产单 / 外购单」打开采购文件链接）
         canViewPurchaseOrder: canViewPurchaseOrder(u),
+        // 权限5「是否可以更新订单状态」（= 有 时订单列表与团队管理员相同）
+        canUpdateStatus: canUpdateOrderStatus(u),
       };
       // 生产部（含计划部 / 采购部 / 品质部 / 财务部）附带「可观察生产方」id 列表
       if (u.role === "restricted") {
@@ -1432,7 +1434,8 @@ function canPlaceOrder(user) {
 // 权限3「是否可以下生产订单」（订单行上黄色「自产单 / 外购单」标签：点击补填采购文件链接）：
 //   · 团队管理员本人固定「有」；
 //   · 普通成员（原业务部）：**默认「无」**，由团队管理员在「成员管理」的成员列表中逐个开关
-//     （user.canPurchase：true = 有 / false 或未设置 = 无）；
+//     （user.canPurchase：true = 有 / false 或未设置 = 无）；权限5「是否可以更新订单状态」= 有 时
+//     与团队管理员相同，同样可以补填采购文件链接；
 //   · 「品质部 / 财务部」（历史账号）固定「无」；
 //   · 其他历史角色以 user.canPurchase 为准，未设置过时与其「生产单下单权限」保持一致。
 // 与「权限1 添加订单」是两个独立开关：录入订单、补填采购文件链接互不影响。
@@ -1440,7 +1443,9 @@ function canPurchaseOrder(user) {
   if (!user) return false;
   if (isTeamAdmin(user.role)) return true;
   if (needsNoOrderPerm(user)) return false;
-  if (isMemberRole(user.role)) return user.canPurchase === true;
+  if (isMemberRole(user.role)) {
+    return user.canUpdateStatus === true || user.canPurchase === true;
+  }
   if (typeof user.canPurchase === "boolean") return user.canPurchase;
   return canPlaceOrder(user);
 }
@@ -1469,11 +1474,34 @@ function canManageTodos(role) {
   return isTeamAdmin(role) || role === "superviewer" || isDeptManager(role);
 }
 
-// 改变待办状态（待确认 / 进行中 / 已完成）：**仅团队管理员 / 总经理**
+// 权限5「是否可以更新订单状态」（普通成员，默认「无」）：
+//   = 有 时该成员的**订单列表显示与功能与团队管理员完全相同** —— 可见本团队全部订单（含待确认）、
+//   可改变订单状态、指定生产方、修改「待确认」订单（PO#/交期/金额/文件链接）、删除订单、添加备注，
+//   且订单号 PO# 与「自产单 / 外购单」标签可点击（等同于同时具备权限2 / 权限3 / 权限4）。
+function canUpdateOrderStatus(user) {
+  if (!user) return false;
+  if (isTeamAdmin(user.role)) return true;
+  if (user.role === "superviewer") return true;
+  if (isMemberRole(user.role)) return user.canUpdateStatus === true;
+  return false; // 部门主管（历史账号）的状态为只读徽章，不能改变状态
+}
+
+// 改变待办状态（待确认 / 进行中 / 已完成）：
+//   团队管理员 / 总经理，以及权限5「是否可以更新订单状态」= 有 的普通成员
 // （部门主管虽然能查看全部待办、指定生产方、删除待办，但状态在其清单里为**只读固定显示**，
 //   界面渲染为状态徽章（与普通成员一致），接口同样拦截状态变更）
-function canChangeTodoStatus(role) {
-  return isTeamAdmin(role) || role === "superviewer";
+function canChangeTodoStatus(user) {
+  if (!user) return false;
+  if (isTeamAdmin(user.role) || user.role === "superviewer") return true;
+  return isMemberRole(user.role) && user.canUpdateStatus === true;
+}
+
+// 可操作**他人**待办（改变状态 / 指定生产方 / 修改待确认待办 / 删除 / 添加备注）：
+//   团队管理员 / 总经理 / 部门主管（历史账号），以及权限5 = 有 的普通成员
+function canManageOthersTodos(user) {
+  if (!user) return false;
+  if (canManageTodos(user.role)) return true;
+  return isMemberRole(user.role) && user.canUpdateStatus === true;
 }
 
 // 部门主管（deptmanager）：功能参照「总经理」，另有 2 个可逐个开关的「查看」权限
@@ -1486,13 +1514,16 @@ function isDeptManager(role) {
 // 权限2「是否可以查看客户订单」（点订单号 PO# 打开订单文件链接 orderUrl）：
 //   · 团队管理员固定可看；
 //   · 普通成员（原业务部）：**默认「无」**，由团队管理员在成员列表中逐个开关
-//     （user.canViewCustomerOrder：true = 是 / false 或未设置 = 否）；
+//     （user.canViewCustomerOrder：true = 是 / false 或未设置 = 否）；权限5「是否可以更新订单状态」
+//     = 有 时与团队管理员相同（订单号同样可点击）；
 //   · 部门主管（历史角色）按开关（未设置过默认「是」）；生产方 / 客户保持历史行为可看；
 //     总经理 / 业务主管 / 生产部等不可看。
 function canViewCustomerOrder(user) {
   if (!user) return false;
   if (isTeamAdmin(user.role)) return true;
-  if (isMemberRole(user.role)) return user.canViewCustomerOrder === true;
+  if (isMemberRole(user.role)) {
+    return user.canUpdateStatus === true || user.canViewCustomerOrder === true;
+  }
   if (isDeptManager(user.role)) return user.canViewCustomerOrder !== false;
   return user.role === "producer" || user.role === "customer";
 }
@@ -1500,13 +1531,16 @@ function canViewCustomerOrder(user) {
 // 权限4「是否可以查看生产订单」（点订单行上的「自产单 / 外购单」打开采购文件链接 purchaseUrl）：
 //   · 团队管理员固定可看；
 //   · 普通成员（原业务部）：**默认「无」**，由团队管理员在成员列表中逐个开关
-//     （user.canViewPurchaseOrder：true = 是 / false 或未设置 = 否）；
+//     （user.canViewPurchaseOrder：true = 是 / false 或未设置 = 否）；权限5「是否可以更新订单状态」
+//     = 有 时与团队管理员相同（采购单标签同样可点击）；
 //   · 部门主管按开关（未设置过默认「是」）；总经理固定可看；
 //   · 其他历史角色按「生产单下单权限」。
 function canViewPurchaseOrder(user) {
   if (!user) return false;
   if (isTeamAdmin(user.role)) return true;
-  if (isMemberRole(user.role)) return user.canViewPurchaseOrder === true;
+  if (isMemberRole(user.role)) {
+    return user.canUpdateStatus === true || user.canViewPurchaseOrder === true;
+  }
   if (isDeptManager(user.role)) return user.canViewPurchaseOrder !== false;
   if (user.role === "superviewer") return true;
   return canPurchaseOrder(user);
@@ -1799,6 +1833,8 @@ async function handleApi(request, env, pathname) {
     info.canViewCustomerOrder = canViewCustomerOrder(user);
     // 权限4「是否可以查看生产订单」（点「外购单 / 自产单」打开采购文件链接）
     info.canViewPurchaseOrder = canViewPurchaseOrder(user);
+    // 权限5「是否可以更新订单状态」= 有 时，订单列表显示与功能与团队管理员相同
+    info.canUpdateStatus = canUpdateOrderStatus(user);
     if (isTeamAdmin(user.role)) {
       info.teamId = user.teamId || user.username;
       info.teamName = user.teamName || user.username;
@@ -2506,6 +2542,9 @@ async function handleApi(request, env, pathname) {
   //     canPurchase             权限3「是否可以下生产订单」（点黄色「自产单 / 外购单」补填采购文件链接）
   //     canViewCustomerOrder    权限2「是否可以查看客户订单」（点订单号 PO# 打开订单文件链接）
   //     canViewPurchaseOrder    权限4「是否可以查看生产订单」（点「外购单 / 自产单」打开采购文件链接）
+  //     canUpdateStatus         权限5「是否可以更新订单状态」（= 有 时订单列表显示与功能与团队管理员相同：
+  //                             可见全部订单、可改状态 / 指定生产方 / 修改待确认订单 / 删除 / 备注，
+  //                             且订单号与「自产单 / 外购单」标签可点击）
   //     canPlaceOrder           历史字段：普通成员的权限1「添加订单」由「是否已分配客户」自动决定，
   //                             不接受在此设置
   if (
@@ -2525,7 +2564,8 @@ async function handleApi(request, env, pathname) {
     const hasPurchase = typeof body.canPurchase === "boolean";
     const hasViewCustomer = typeof body.canViewCustomerOrder === "boolean";
     const hasViewPurchase = typeof body.canViewPurchaseOrder === "boolean";
-    if (!hasPlace && !hasPurchase && !hasViewCustomer && !hasViewPurchase) {
+    const hasUpdateStatus = typeof body.canUpdateStatus === "boolean";
+    if (!hasPlace && !hasPurchase && !hasViewCustomer && !hasViewPurchase && !hasUpdateStatus) {
       return json({ error: "请传入 true（有）或 false（无）" }, 400);
     }
     const targetUser = await getTeamMember(env, target, teamIdOf(user));
@@ -2547,6 +2587,18 @@ async function handleApi(request, env, pathname) {
           error:
             memberRoleLabel(targetUser) +
             "成员不需要「生产单下单权限」（固定不录入订单），无需设置",
+        },
+        400
+      );
+    }
+    // 权限5「是否可以更新订单状态」仅适用于普通成员（原业务部）
+    if (hasUpdateStatus && !isMemberRole(targetUser.role)) {
+      return json(
+        {
+          error:
+            "「是否可以更新订单状态」仅适用于普通成员（原业务部）（当前成员："
+            + memberRoleLabel(targetUser)
+            + "）",
         },
         400
       );
@@ -2584,6 +2636,7 @@ async function handleApi(request, env, pathname) {
     if (hasPurchase) targetUser.canPurchase = body.canPurchase;
     if (hasViewCustomer) targetUser.canViewCustomerOrder = body.canViewCustomerOrder;
     if (hasViewPurchase) targetUser.canViewPurchaseOrder = body.canViewPurchaseOrder;
+    if (hasUpdateStatus) targetUser.canUpdateStatus = body.canUpdateStatus;
     await env.TODO_KV.put(`user:${target}`, JSON.stringify(targetUser));
     return json({
       ok: true,
@@ -2591,6 +2644,7 @@ async function handleApi(request, env, pathname) {
       canPurchase: canPurchaseOrder(targetUser),
       canViewCustomerOrder: canViewCustomerOrder(targetUser),
       canViewPurchaseOrder: canViewPurchaseOrder(targetUser),
+      canUpdateStatus: canUpdateOrderStatus(targetUser),
     });
   }
 
@@ -3006,6 +3060,15 @@ async function handleApi(request, env, pathname) {
     const user = await getCurrentUser(request, env);
     if (!user) return json({ error: "未登录" }, 401);
     const teamId = teamIdOf(user);
+    // 权限5「是否可以更新订单状态」= 有 的普通成员：订单列表显示与功能与团队管理员相同
+    //（可见本团队全部订单，含待确认；状态可改、可指定生产方、可修改待确认订单、可删除、可备注）
+    if (isMemberRole(user.role) && canUpdateOrderStatus(user)) {
+      return json({
+        todos: await getAllTodos(env, teamId, false),
+        readonly: false,
+        allUsers: true,
+      });
+    }
     // 团队管理员 / 总经理：可查看本团队所有用户的待办（含待确认）
     if (canManageTodos(user.role)) {
       return json({
@@ -3173,9 +3236,9 @@ async function handleApi(request, env, pathname) {
     const text = body.text;
     if (!text || !text.trim()) return json({ error: "请输入备注内容" }, 400);
 
-    // 观察类用户/团队管理员/总经理可对任意用户的待办添加备注；其他用户仅能对自己的待办添加
+    // 观察类用户/团队管理员/总经理（及权限5 = 有 的成员）可对任意用户的待办添加备注；其他用户仅能对自己的待办添加
     let owner = user.username;
-    if (isObserverRole(user.role) || canManageTodos(user.role)) {
+    if (isObserverRole(user.role) || canManageOthersTodos(user)) {
       const requested = body.owner || user.username;
       if (requested !== user.username) {
         // 只能操作本团队成员（跨团队不可见）
@@ -3234,17 +3297,20 @@ async function handleApi(request, env, pathname) {
     const id = decodeURIComponent(pathname.replace("/api/todos/", ""));
     const body = await readBody(request);
 
-    // 只有团队管理员 / 总经理可以改变待办状态（待确认/进行中/已完成）；
+    // 改变待办状态：团队管理员 / 总经理 / 权限5「是否可以更新订单状态」= 有 的普通成员；
     // 部门主管的清单里状态为只读固定显示（界面不给下拉，接口同样拦截）
     const wantsStatusChange =
       typeof body.status === "string" || typeof body.done === "boolean";
-    if (wantsStatusChange && !canChangeTodoStatus(user.role)) {
-      return json({ error: "只有团队管理员或总经理可以改变待办状态" }, 403);
+    if (wantsStatusChange && !canChangeTodoStatus(user)) {
+      return json(
+        { error: "只有团队管理员、总经理或拥有「更新订单状态」权限的成员可以改变订单状态" },
+        403
+      );
     }
 
-    // 团队管理员 / 总经理可操作本团队任意用户的待办；其他用户仅能操作自己的
+    // 团队管理员 / 总经理（及权限5 = 有 的成员）可操作本团队任意用户的待办；其他用户仅能操作自己的
     let owner = user.username;
-    if (canManageTodos(user.role) && body.owner && body.owner !== user.username) {
+    if (canManageOthersTodos(user) && body.owner && body.owner !== user.username) {
       const member = await getTeamMember(env, body.owner, teamIdOf(user));
       if (!member) return json({ error: "无权操作该用户的待办" }, 403);
       owner = body.owner;
@@ -3391,9 +3457,9 @@ async function handleApi(request, env, pathname) {
       return json({ error: memberRoleLabel(user) + "无删除权限" }, 403);
     }
     const id = decodeURIComponent(pathname.replace("/api/todos/", ""));
-    // 团队管理员 / 总经理可通过 ?owner= 删除本团队任意用户的待办
+    // 团队管理员 / 总经理（及权限5 = 有 的成员）可通过 ?owner= 删除本团队任意用户的待办
     let owner = user.username;
-    if (canManageTodos(user.role)) {
+    if (canManageOthersTodos(user)) {
       const qOwner = new URL(request.url).searchParams.get("owner");
       if (qOwner && qOwner !== user.username) {
         const member = await getTeamMember(env, qOwner, teamIdOf(user));

@@ -1325,6 +1325,15 @@ ${commonStyle}
     gap: 6px;
     flex-shrink: 0;
   }
+  /* 成员行右侧的「重置密码 / 删除」：两个按钮**分行**显示（上下排列） */
+  .user-row-btns {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+  .user-row-btns button { width: 100%; }
   /* 加深底色上的按钮改用白底，更清楚 */
   .user-row .btn-secondary-sm { background: #fff; border: 1px solid #e0e0dc; }
   .user-row .btn-secondary-sm:hover { background: #f7f7f5; }
@@ -1611,7 +1620,7 @@ ${commonStyle}
         <input type="text" id="newUserName" placeholder="用户名" style="margin-bottom:8px">
         <input type="password" id="newUserPwd" placeholder="密码" style="margin-bottom:8px">
         <input type="text" id="newUserPosition" placeholder="职位（手动输入，如：业务员 / 采购 / 主管）" maxlength="20" style="width:100%;padding:9px 12px;border:1px solid #e0e0dc;border-radius:6px;font-size:14px;background:#fff;color:#37352f;outline:none">
-        <div class="order-perm-hint" style="margin-top:6px">新增成员统一为普通成员：权限1「添加订单」自动（分配客户后即可添加订单），权限2「查看客户订单」/ 权限3「下生产订单」/ 权限4「查看生产订单」在下方成员列表中逐个设置</div>
+        <div class="order-perm-hint" style="margin-top:6px">新增成员统一为普通成员：权限1「添加订单」自动（分配客户后即可添加订单），权限2「查看客户订单」/ 权限3「下生产订单」/ 权限4「查看生产订单」/ 权限5「更新订单状态」（= 是 时订单列表与团队管理员相同）在下方成员列表中逐个设置</div>
       </div>
       <button class="btn-primary-sm" id="btnAddUser" style="width:100%">添加成员</button>
       <div class="msg" id="userMsg"></div>
@@ -1947,9 +1956,12 @@ ${commonStyle}
     teamIsPro = isTeamAdmin ? isProTeam : !!currentUser.teamPro;
     isSuperviewer = currentUser.role === 'superviewer';
     isDeptManager = currentUser.role === 'deptmanager';
-    isTodoManager = isTeamAdmin || isSuperviewer || isDeptManager;
-    // 待办状态的可编辑范围：仅团队管理员 / 总经理；部门主管与业务部一样只读显示状态
-    canChangeStatus = isTeamAdmin || isSuperviewer;
+    // 权限5「是否可以更新订单状态」= 有 的普通成员：订单列表显示与功能与团队管理员相同
+    const isStatusUpdater = !!currentUser.canUpdateStatus &&
+      (currentUser.role === 'editor' || currentUser.role === 'member');
+    isTodoManager = isTeamAdmin || isSuperviewer || isDeptManager || isStatusUpdater;
+    // 待办状态的可编辑范围：团队管理员 / 总经理 / 权限5=有 的成员；部门主管与普通成员一样只读显示状态
+    canChangeStatus = isTeamAdmin || isSuperviewer || isStatusUpdater;
     // 显示全部用户待办的场景：团队管理员 / 总经理 / 观察类角色（业务主管 / 生产部 / 生产方 / 客户）。
     // 注：普通成员（editor / member）只能看到自己的订单，因此不在此列。
     showAllUsers = isTodoManager || isObserver;
@@ -3369,11 +3381,13 @@ ${commonStyle}
         //   · 生产部 / 计划部 / 采购部（历史账号）：保留单个「生产单下单权限」开关。
         const noOrderPerm = u.role === 'restricted' &&
           (u.dept === '品质部' || u.dept === '财务部');
-        // onText/offText：历史权限用「有 / 无」；权限2 / 3 / 4 用「是 / 否」
-        const permToggle = function (attr, text, on, onText, offText) {
+        // onText/offText：历史权限用「有 / 无」；权限2 / 3 / 4 / 5 用「是 / 否」
+        // title（可选）：自定义悬浮说明（权限5 用它解释「= 团队管理员相同」）
+        const permToggle = function (attr, text, on, onText, offText, title) {
           const a = onText || '有';
           const b = offText || '无';
-          return '<label class="order-perm" title="' + text + '：' + a + ' = 允许，' + b + ' = 不允许">' +
+          return '<label class="order-perm" title="' +
+            (title || (text + '：' + a + ' = 允许，' + b + ' = 不允许')) + '">' +
             '<input type="checkbox" ' + attr + '="' + esc(u.username) + '"' + (on ? ' checked' : '') + '>' +
             '<span>' + text + '：<b>' + (on ? a : b) + '</b></span></label>';
         };
@@ -3394,6 +3408,10 @@ ${commonStyle}
               permToggle('data-canvieworder', '是否可以查看客户订单', u.canViewCustomerOrder === true, '是', '否') +
               permToggle('data-canpurchase', '是否可以下生产订单', u.canPurchase === true, '是', '否') +
               permToggle('data-canviewpurchase', '是否可以查看生产订单', u.canViewPurchaseOrder === true, '是', '否') +
+              permToggle('data-canupdatestatus', '是否可以更新订单状态', u.canUpdateStatus === true, '是', '否',
+                '「是否可以更新订单状态」= 是 时，该成员的订单列表显示与功能与团队管理员完全相同：' +
+                '可见本团队全部订单（含待确认），可改变状态 / 指定生产方 / 修改「待确认」订单 / 删除 / 添加备注，' +
+                '且订单号与「自产单 / 外购单」标签可点击（默认「否」）') +
             '</div>'
           : (isDeptMgrRow
             // 部门主管（历史账号，功能参照总经理）：固定不录入订单，只保留 2 个查看权限开关（分行显示）
@@ -3416,8 +3434,10 @@ ${commonStyle}
             </div>
             <div class="user-row-actions">
               \${orderPermBlock}
-              <button class="btn-secondary-sm" data-resetpwd="\${esc(u.username)}">重置密码</button>
-              <button class="btn-danger" data-deluser="\${esc(u.username)}">删除</button>
+              <div class="user-row-btns">
+                <button class="btn-secondary-sm" data-resetpwd="\${esc(u.username)}">重置密码</button>
+                <button class="btn-danger" data-deluser="\${esc(u.username)}">删除</button>
+              </div>
             </div>
           </div>
           \${customerBlock}
@@ -3448,13 +3468,14 @@ ${commonStyle}
       });
       // 成员备注（点文字直接修改）
       bindDescEditors(list, () => loadUsers());
-      // 权限开关（勾选后立即保存）：权限2 查看客户订单 / 权限3 下生产订单 / 权限4 查看生产订单
-      //（历史角色的「生产单下单权限」也走同一接口）
+      // 权限开关（勾选后立即保存）：权限2 查看客户订单 / 权限3 下生产订单 / 权限4 查看生产订单 /
+      // 权限5 更新订单状态（= 有 时订单列表与团队管理员相同）；历史角色的「生产单下单权限」也走同一接口
       const permAttrs = [
         ['data-canorder', 'canPlaceOrder'],
         ['data-canpurchase', 'canPurchase'],
         ['data-canvieworder', 'canViewCustomerOrder'],
         ['data-canviewpurchase', 'canViewPurchaseOrder'],
+        ['data-canupdatestatus', 'canUpdateStatus'],
       ];
       list.querySelectorAll(permAttrs.map(a => '[' + a[0] + ']').join(', ')).forEach(el => {
         el.addEventListener('change', async () => {
