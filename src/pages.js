@@ -1347,14 +1347,21 @@ ${commonStyle}
     cursor: pointer;
   }
   .order-perm b { color: #37352f; font-weight: 600; }
-  /* 业务部成员：两个权限开关**分行**显示（客户订单录入 / 采购订单下单） */
+  /* 权限1「添加订单」（自动：客户列表里有客户即可添加订单）在成员行里的只读状态提示 */
+  .order-perm-static {
+    font-size: 12px;
+    color: #6b6b68;
+    white-space: nowrap;
+  }
+  .order-perm-static b { color: #37352f; font-weight: 600; }
+  /* 普通成员的多个权限开关**分行**显示（权限2 / 权限3 / 权限4） */
   .order-perm-col {
     display: flex;
     flex-direction: column;
     align-items: flex-start;
     gap: 6px;
   }
-  /* 权限开关后面的补充说明（如「客户订单录入」选「无」则为业务主管） */
+  /* 权限开关后面的补充说明（如新增成员表单底部的权限说明） */
   .order-perm-hint {
     color: #9b9a97;
     font-size: 12px;
@@ -1603,11 +1610,8 @@ ${commonStyle}
         <label>新增成员</label>
         <input type="text" id="newUserName" placeholder="用户名" style="margin-bottom:8px">
         <input type="password" id="newUserPwd" placeholder="密码" style="margin-bottom:8px">
-        <select id="newUserRole" style="width:100%;padding:9px 12px;border:1px solid #e0e0dc;border-radius:6px;font-size:14px;background:#fff;color:#37352f;outline:none">
-          <option value="editor">业务部(录入订单，须分配客户)</option>
-          <option value="deptmanager">部门主管(同总经理；可开关是否查看客户/采购订单)</option>
-          <option value="superviewer">总经理(最大权限，无团队设置/成员/生产方/客户管理)</option>
-        </select>
+        <input type="text" id="newUserPosition" placeholder="职位（手动输入，如：业务员 / 采购 / 主管）" maxlength="20" style="width:100%;padding:9px 12px;border:1px solid #e0e0dc;border-radius:6px;font-size:14px;background:#fff;color:#37352f;outline:none">
+        <div class="order-perm-hint" style="margin-top:6px">新增成员统一为普通成员：权限1「添加订单」自动（分配客户后即可添加订单），权限2「查看客户订单」/ 权限3「下生产订单」/ 权限4「查看生产订单」在下方成员列表中逐个设置</div>
       </div>
       <button class="btn-primary-sm" id="btnAddUser" style="width:100%">添加成员</button>
       <div class="msg" id="userMsg"></div>
@@ -1947,7 +1951,7 @@ ${commonStyle}
     // 待办状态的可编辑范围：仅团队管理员 / 总经理；部门主管与业务部一样只读显示状态
     canChangeStatus = isTeamAdmin || isSuperviewer;
     // 显示全部用户待办的场景：团队管理员 / 总经理 / 观察类角色（业务主管 / 生产部 / 生产方 / 客户）。
-    // 注：业务部（editor / member）固定拥有「客户订单录入」权限，只能看到自己的订单，因此不在此列。
+    // 注：普通成员（editor / member）只能看到自己的订单，因此不在此列。
     showAllUsers = isTodoManager || isObserver;
     document.getElementById('currentUser').textContent = currentUser.username;
 
@@ -2227,8 +2231,7 @@ ${commonStyle}
   function renderItem(t) {
     const ownerAttr = t.owner ? \` data-owner="\${esc(t.owner)}"\` : '';
     // 录入者标签：
-    //   · 业务部成员：清单里**每条订单都显示录入者**（含自己的订单；关闭「客户订单录入」后
-    //     清单会显示全部订单，更需要逐条标出录入者）；
+    //   · 普通成员：清单里**每条订单都显示录入者**（含自己的订单）；
     //   · 其他角色：只在能看他人订单时显示（团队管理员 / 总经理 / 观察类），自己的订单不显示用户名。
     const isEditorView = currentUser.role === 'editor' || currentUser.role === 'member';
     const showOwnerTag = !!t.owner &&
@@ -2262,18 +2265,17 @@ ${commonStyle}
         ? (producerInfo.nature === 'purchased' ? '外购单' : '自产单')
         : producerShort)
       : '';
-    // 管理员 / 总经理：该待办填了「采购文件链接」时，生产方标签可点击直接打开采购文件
-    // （其他角色页面仍为普通标签）
-    // 已填「采购文件链接」的灰色标签：团队管理员 / 总经理，以及「是否可查看采购订单 = 是」的成员
-    // （部门主管用开关控制；业务部按「采购订单下单」权限）都可点击直接打开采购文件
+    // 已填「采购文件链接」的灰色标签（权限4「是否可以查看生产订单」= 是时）：
+    // 团队管理员 / 总经理 / 部门主管（历史账号，按「是否可查看采购订单」开关）以及
+    // 权限4 = 是 的普通成员，都可点击直接打开采购文件
     const canOpenPurchase = currentUser.canViewPurchaseOrder !== undefined
       ? !!currentUser.canViewPurchaseOrder
       : (isTodoManager || !!currentUser.canPurchase); // 兜底：与历史行为一致
     const producerTagAsLink = canOpenPurchase && !!t.purchaseUrl;
     // 未填写「采购文件链接」时：标签改用黄色色块，提示需要补齐采购文件
     const producerWarn = !t.purchaseUrl;
-    // 黄色标签：有「采购订单下单」权限的成员可点击直接补填采购文件链接
-    // （与「客户订单录入」相互独立：只开录入不开采购时，黄色标签仅作提示）
+    // 黄色标签（权限3「是否可以下生产订单」= 有）可点击直接补填采购文件链接
+    // （与权限1「添加订单」相互独立：只开录入不开采购时，黄色标签仅作提示）
     const canFillPurchase = producerWarn && !!currentUser.canPurchase;
     const producerTagCls = 'todo-producer' + (producerWarn ? ' todo-producer-warn' : '') +
       (canFillPurchase ? ' todo-producer-addable' : '');
@@ -2366,8 +2368,9 @@ ${commonStyle}
 
 
     // PO#（标题）可点击的链接：由「是否可查看客户订单」决定
-    //   · 团队管理员 / 业务部 / 生产方 / 客户：可点击（历史行为不变）
-    //   · 部门主管：按开关（未设置过默认可点击）
+    //   · 团队管理员 / 生产方 / 客户：可点击（历史行为不变）
+    //   · 普通成员：按权限2「是否可以查看客户订单」（默认「无」）
+    //   · 部门主管（历史账号）：按开关（未设置过默认可点击）
     //   · 业务主管 / 生产部 / 总经理：纯文本不可点击
     const canViewCustomer = currentUser.canViewCustomerOrder !== undefined
       ? !!currentUser.canViewCustomerOrder
@@ -2579,8 +2582,8 @@ ${commonStyle}
 
   const MENTION_ROLE_TEXT = {
     team: '团队账号',
-    editor: '业务部',
-    member: '业务部',
+    editor: '成员',
+    member: '成员',
     viewer: '业务主管',
     restricted: '生产部',
     superviewer: '总经理',
@@ -2794,7 +2797,7 @@ ${commonStyle}
     box.className = 'mention-picker';
     box.innerHTML = list.length
       ? list.map(function (m, i) {
-          const role = m.dept || MENTION_ROLE_TEXT[m.role] || m.role || '';
+          const role = m.position || m.dept || MENTION_ROLE_TEXT[m.role] || m.role || '';
           return '<div class="mention-item' + (i === 0 ? ' active' : '') + '" data-mention-pick="' + esc(m.username) + '">' +
             '<span class="mention-name">@' + esc(m.username) + '</span>' +
             '<span class="mention-role">' + esc(role) + (m.isTeamAdmin && m.label ? '·' + esc(m.label) : '') + '</span>' +
@@ -3292,16 +3295,16 @@ ${commonStyle}
     try {
       const data = await api('/api/users');
       const list = document.getElementById('userList');
-      // 业务部：editor（兼容历史 role=member 数据）
-      const isEditor = (u) => u.role === 'editor' || u.role === 'member';
+      // 普通成员（原业务部）：editor（兼容历史 role=member 数据）
+      const isMember = (u) => u.role === 'editor' || u.role === 'member';
       // 本团队生产方列表（生产部授权用）
       const producers = await ensureProducers();
-      // 本团队客户列表（为「业务部」分配客户时的可选项，来自「客户管理」；每次打开都重新拉取）
+      // 本团队客户列表（为成员分配客户时的可选项，来自「客户管理」；每次打开都重新拉取）
       const customerList = await ensureCustomerList(true);
-      // 先并发拉取所有可录入成员的客户列表，避免逐个 await 造成的问题
+      // 先并发拉取所有普通成员的客户列表（用于客户标签 + 权限1「添加订单」状态），避免逐个 await 造成的问题
       const customerMap = {};
       await Promise.all(data.users.map(async (u) => {
-        if (!isEditor(u)) return;
+        if (!isMember(u)) return;
         try {
           const cd = await api('/api/customers/' + encodeURIComponent(u.username));
           customerMap[u.username] = cd.customers || [];
@@ -3310,14 +3313,19 @@ ${commonStyle}
         }
       }));
       list.innerHTML = data.users.map(u => {
-        const roleText = u.dept || ROLE_TEXT[u.role] || '业务部';
+        // 普通成员显示「职位」（手动填写，可点击修改）；历史账号回退为角色名
+        const isMemberRow = isMember(u);
+        const positionText = String(u.position || '').trim();
+        const roleText = isMemberRow
+          ? (positionText || '未填写职位')
+          : (u.dept || ROLE_TEXT[u.role] || '成员');
         const roleCls = ROLE_CLS[u.role] || '';
-        // 业务部需要维护客户列表
+        // 普通成员需要维护客户列表（「添加订单」权限的依据：有客户即可添加订单）
         let customerBlock = '';
         if (u.role === 'restricted') {
-          // 生产部 / 计划部 / 采购部 / 品质部 / 财务部：维护「可观察生产方」
+          // 生产部 / 计划部 / 采购部 / 品质部 / 财务部（历史账号）：维护「可观察生产方」
           customerBlock = buildWatchBlock(u, producers);
-        } else if (isEditor(u)) {
+        } else if (isMemberRow) {
 
           const customers = customerMap[u.username] || [];
           const assignedIds = customers.map(c => c.id);
@@ -3345,16 +3353,17 @@ ${commonStyle}
             <div class="customer-add-row">\${addRow}</div>
           </div>\`;
         }
-        // 成员行右侧的权限开关：
-        //   · 业务部（editor / 历史 member）：固定拥有「客户订单录入」，只保留「采购订单下单」开关；
-        //   · 部门主管：固定不录入订单（订单列表上方无「添加新订单」录入区），
-        //     只显示「是否可查看客户订单 / 采购订单」两个查看开关（分行显示）；
-        //   · 总经理：固定不录入订单，不显示任何开关；
+        // 成员行右侧的权限开关（团队管理员在这里逐个设定各成员的具体权限）：
+        //   · 普通成员（原业务部）：权限1「添加订单」自动（有客户即可添加订单，只显示状态）；
+        //     权限2「是否可以查看客户订单」/ 权限3「是否可以下生产订单」/ 权限4「是否可以查看生产订单」
+        //     三个开关，**默认「无」**（分行显示）；
+        //   · 部门主管（历史账号）：固定不录入订单，只显示两个查看权限开关；
+        //   · 总经理（历史账号）：固定不录入订单，不显示任何开关；
         //   · 品质部 / 财务部（历史账号）：不需要下单相关权限，不显示开关；
         //   · 生产部 / 计划部 / 采购部（历史账号）：保留单个「生产单下单权限」开关。
         const noOrderPerm = u.role === 'restricted' &&
           (u.dept === '品质部' || u.dept === '财务部');
-        // onText/offText：普通权限用「有 / 无」；部门主管的查看权限用「是 / 否」
+        // onText/offText：历史权限用「有 / 无」；权限2 / 3 / 4 用「是 / 否」
         const permToggle = function (attr, text, on, onText, offText) {
           const a = onText || '有';
           const b = offText || '无';
@@ -3364,22 +3373,36 @@ ${commonStyle}
         };
         const isDeptMgrRow = u.role === 'deptmanager';
         const isSuperviewerRow = u.role === 'superviewer';
-        const orderPermBlock = noOrderPerm ? '' : (isEditor(u)
-          ? permToggle('data-canpurchase', '采购订单下单', !!u.canPurchase)
+        // 权限1「添加订单」：自动 —— 该成员的客户列表里有客户即可添加订单
+        const myCustomers = customerMap[u.username] || [];
+        const hasCustomers = myCustomers.length > 0;
+        const orderPermBlock = noOrderPerm ? '' : (isMemberRow
+          ? '<div class="order-perm-col">' +
+              '<span class="order-perm-static" title="权限1「添加订单」自动生效：客户列表里有客户即可添加订单；没有客户则默认无添加订单功能">' +
+                '添加订单：<b>' + (hasCustomers ? '有' : '无') + '</b>' +
+                (hasCustomers ? '（已有 ' + myCustomers.length + ' 个客户）' : '（请先分配客户）') +
+              '</span>' +
+              permToggle('data-canvieworder', '是否可以查看客户订单', u.canViewCustomerOrder === true, '是', '否') +
+              permToggle('data-canpurchase', '是否可以下生产订单', u.canPurchase === true, '是', '否') +
+              permToggle('data-canviewpurchase', '是否可以查看生产订单', u.canViewPurchaseOrder === true, '是', '否') +
+            '</div>'
           : (isDeptMgrRow
-            // 部门主管（功能参照总经理）：固定不录入订单，只保留 2 个查看权限开关（分行显示）
+            // 部门主管（历史账号，功能参照总经理）：固定不录入订单，只保留 2 个查看权限开关（分行显示）
             ? '<div class="order-perm-col">' +
                 permToggle('data-canvieworder', '是否可查看客户订单', u.canViewCustomerOrder !== false, '是', '否') +
                 permToggle('data-canviewpurchase', '是否可查看采购订单', u.canViewPurchaseOrder !== false, '是', '否') +
               '</div>'
-            // 总经理：固定不录入订单，不显示任何权限开关
+            // 总经理（历史账号）：固定不录入订单，不显示任何权限开关
             : (isSuperviewerRow ? '' : permToggle('data-canorder', '生产单下单权限', !!u.canPlaceOrder))));
         return \`
         <div class="user-block">
           <div class="user-row">
             <div>
               \${u.mentionsUnread ? '<span class="mention-badge static" title="该成员有 ' + u.mentionsUnread + ' 条未读 @ 消息">' + mentionCountText(u.mentionsUnread) + '</span>' : ''}<span>\${esc(u.username)}</span>
-              <span class="role \${roleCls}">\${roleText}</span>
+              \${isMemberRow
+                ? '<span class="role ' + roleCls + ' desc-editable" data-desc-kind="position" data-desc-id="' + esc(u.username) + '" data-desc-name="' + esc(u.username) + '" title="点击修改职位">' +
+                    (positionText ? esc(positionText) : '<span class="desc-empty">未填写职位</span>') + '</span>'
+                : '<span class="role ' + roleCls + '">' + roleText + '</span>'}
               \${editTextHtml('user', u.username, u.username, u.remark, '未填写', 'remark-row')}
             </div>
             <div class="user-row-actions">
@@ -3416,7 +3439,8 @@ ${commonStyle}
       });
       // 成员备注（点文字直接修改）
       bindDescEditors(list, () => loadUsers());
-      // 权限开关（勾选后立即保存）：生产单下单权限 / 采购订单下单 / 部门主管的两个查看权限
+      // 权限开关（勾选后立即保存）：权限2 查看客户订单 / 权限3 下生产订单 / 权限4 查看生产订单
+      //（历史角色的「生产单下单权限」也走同一接口）
       const permAttrs = [
         ['data-canorder', 'canPlaceOrder'],
         ['data-canpurchase', 'canPurchase'],
@@ -3519,12 +3543,8 @@ ${commonStyle}
     msg.className = 'msg';
     const username = document.getElementById('newUserName').value.trim();
     const password = document.getElementById('newUserPwd').value;
-    const roleSel = document.getElementById('newUserRole');
-    const role = roleSel.value;
-    // 部门名：历史「生产部 / 计划部 / 采购部 / 品质部 / 财务部」选项带 data-dept，
-    // 现在新增成员已不再提供这些角色（仅历史账号保留），这里保留读取逻辑以便兼容
-    const picked = roleSel.options[roleSel.selectedIndex];
-    const dept = picked && picked.getAttribute ? picked.getAttribute('data-dept') || '' : '';
+    // 职位（手动输入）：新增成员不再有「业务部 / 部门主管 / 总经理」分类
+    const position = document.getElementById('newUserPosition').value.trim();
     if (!username || !password) {
       msg.className = 'msg err';
       msg.textContent = '请填写用户名和密码';
@@ -3534,13 +3554,13 @@ ${commonStyle}
       await api('/api/users', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password, role, dept }),
+        body: JSON.stringify({ username, password, position }),
       });
       msg.className = 'msg ok';
-      msg.textContent = '添加成功';
+      msg.textContent = '添加成功（权限请在下方成员列表中逐个设置）';
       document.getElementById('newUserName').value = '';
       document.getElementById('newUserPwd').value = '';
-      document.getElementById('newUserRole').value = 'editor';
+      document.getElementById('newUserPosition').value = '';
       await loadUsers();
     } catch (err) {
       msg.className = 'msg err';
@@ -3778,6 +3798,14 @@ ${commonStyle}
       hint: '请输入备注（留空即清除备注）',
       key: 'remark',
       api: (id) => '/api/users/' + encodeURIComponent(id) + '/remark',
+    },
+    // 成员职位（「业务部 / 部门主管 / 总经理」分类取消后改为手动输入的职位）
+    position: {
+      label: '成员',
+      field: '职位',
+      hint: '请输入职位（手动输入，留空即清除职位）',
+      key: 'position',
+      api: (id) => '/api/users/' + encodeURIComponent(id) + '/position',
     },
     producer: {
       label: '生产方',

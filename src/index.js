@@ -1080,14 +1080,17 @@ async function listUsers(env, teamId) {
         role: u.role,
         createdAt: u.createdAt,
         remark: u.remark || "",
-        // 部门（仅「生产部」类角色有值：生产部 / 计划部 / 采购部 / 品质部 / 财务部）
+        // 职位（新增成员时团队管理员手动填写；历史账号没有该字段，界面回退为角色名）
+        position: u.position || "",
+        // 部门（历史「生产部」类角色才有值：生产部 / 计划部 / 采购部 / 品质部 / 财务部）
         dept: u.dept || "",
-        // 生产单下单权限（团队管理员在「成员管理」里可逐个开关）
+        // 权限1「添加订单」的能力（是否真正生效取决于该成员是否已分配客户，见 /api/me）
         canPlaceOrder: canPlaceOrder(u),
-        // 采购订单下单权限（补填 / 打开采购文件链接；与「客户订单录入」相互独立）
+        // 权限3「是否可以下生产订单」（点黄色「自产单 / 外购单」补填采购文件链接）
         canPurchase: canPurchaseOrder(u),
-        // 「部门主管」的两个查看权限（其他角色按各自的历史规则计算，供界面展示）
+        // 权限2「是否可以查看客户订单」（点订单号 PO# 打开订单文件链接）
         canViewCustomerOrder: canViewCustomerOrder(u),
+        // 权限4「是否可以查看生产订单」（点「自产单 / 外购单」打开采购文件链接）
         canViewPurchaseOrder: canViewPurchaseOrder(u),
       };
       // 生产部（含计划部 / 采购部 / 品质部 / 财务部）附带「可观察生产方」id 列表
@@ -1175,7 +1178,7 @@ async function saveCustomers(env, username, customers) {
   await env.TODO_KV.put(`customers:${username}`, JSON.stringify(customers));
 }
 
-// 获取本团队客户列表（「客户管理」维护；成员管理中为「业务部」分配客户时从这里选择）
+// 获取本团队客户列表（「客户管理」维护；成员管理中为成员分配客户时从这里选择）
 // 历史数据（默认团队）落在旧 key "customerList" 上，保持兼容
 async function getCustomerList(env, teamId) {
   const key = !teamId || teamId === DEFAULT_TEAM ? "customerList" : `customerList:${teamId}`;
@@ -1190,7 +1193,7 @@ async function saveCustomerList(env, teamId, list) {
 }
 
 // 试用团队账号添加订单时手工填写的客户名称：自动记入「本人客户列表」与「团队客户列表」，
-// 便于订阅为专业版后在「客户管理」中看到并分配给业务部（不会自动创建客户登录账号）
+// 便于订阅为专业版后在「客户管理」中看到并分配给成员（不会自动创建客户登录账号）
 async function rememberTrialCustomer(env, user, name) {
   const trimmed = String(name || "").trim();
   if (!trimmed) return;
@@ -1285,6 +1288,8 @@ async function listMentionable(env, teamId) {
     list.push({
       username: m.username,
       role: m.role,
+      // 职位（普通成员在备注 @提及候选列表里显示职位，历史账号回退为角色名）
+      position: m.position || "",
       dept: m.dept || "",
       isTeamAdmin: false,
       label: m.username,
@@ -1341,23 +1346,15 @@ async function addMentionRecords(env, author, mentions, ctx) {
   }
 }
 
-// 「生产部」类部门（role = restricted）：**功能与生产部完全相同**，只是显示名称不同
-//   成员记录上以 dept 字段区分（生产部 / 计划部 / 采购部 / 品质部 / 财务部）
-//   权限判断一律仍按 role === "restricted" 处理，因此新增部门不影响任何既有逻辑
-const DEPT_LABELS = ["生产部", "计划部", "采购部", "品质部", "财务部"];
-const DEFAULT_DEPT = "生产部";
-
-function normalizeDept(raw, role) {
-  if (role !== "restricted") return "";
-  const v = String(raw === undefined || raw === null ? "" : raw).trim();
-  return DEPT_LABELS.includes(v) ? v : DEFAULT_DEPT;
-}
+// 注：历史「生产部」类部门（role = restricted）成员在记录上用 dept 字段区分显示名称
+//   （生产部 / 计划部 / 采购部 / 品质部 / 财务部），权限判断一律按 role === "restricted" 处理。
+//   新增成员已不再提供这些分类（改为手动填写的「职位」position），因此不再需要部门归一化逻辑。
 
 // 角色名称
 const ROLE_LABEL = {
   superadmin: "超级管理员",
   team: "团队管理员",
-  editor: "业务部",
+  editor: "成员",
   viewer: "业务主管",
   restricted: "生产部",
   producer: "生产方",
@@ -1370,10 +1367,10 @@ function roleLabel(role) {
   return ROLE_LABEL[role] || role || "";
 }
 
-// 成员的角色名称：属于「生产部」类部门时优先显示具体部门（计划部 / 采购部 / 品质部 / 财务部）
+// 成员的角色名称：普通成员优先显示「职位」（手动填写），历史「生产部」类部门显示具体部门
 function memberRoleLabel(u) {
   if (!u) return "";
-  return u.dept || ROLE_LABEL[u.role] || u.role || "";
+  return u.position || u.dept || ROLE_LABEL[u.role] || u.role || "";
 }
 
 // 观察类角色（业务主管 / 生产部 / 生产方 / 客户）：只读，但可添加备注
@@ -1386,13 +1383,13 @@ function isObserverRole(role) {
   );
 }
 
-// 生产单下单权限（团队管理员可在「成员管理」里对每个成员逐个开关）：
+// 「添加订单」能力的历史开关（成员管理里已不再提供的开关 / 历史字段）：
 //   · 团队管理员本人固定「有」；
-//   · **业务部（editor / 历史 member）固定「有」** —— 业务部默认就应能录入客户订单，
-//     成员管理里**不再提供该开关**（历史数据里若存过 false 也一律按「有」处理）；
-//   · 「品质部 / 财务部」成员（restricted + dept）不需要下生产单：固定「无」，
-//     成员管理清单里也不再显示该开关（见 NO_ORDER_DEPTS）；
-//   · 其他成员（生产部 / 计划部 / 采购部 / 总经理）以 user.canPlaceOrder 为准
+//   · **普通成员（原业务部，editor / 历史 member）具备该能力** —— 是否真正生效取决于
+//     「是否已分配客户」（见 canAddOrderNow：有客户才显示录入区，无客户默认无添加订单功能），
+//     因此成员管理里**不再提供该开关**；
+//   · 「品质部 / 财务部」成员（restricted + dept）固定「无」（见 NO_ORDER_DEPTS）；
+//   · 其他历史角色（业务主管 / 生产部 / 部门主管 / 总经理等）以 user.canPlaceOrder 为准
 //     （未设置过时按「无」，与历史行为一致）。
 const NO_ORDER_DEPTS = ["品质部", "财务部"]; // 这两个部门不需要「生产单下单权限」
 
@@ -1401,22 +1398,29 @@ function needsNoOrderPerm(user) {
   return !!user && user.role === "restricted" && NO_ORDER_DEPTS.includes(user.dept || "");
 }
 
-// 业务部成员（editor / 历史 member）：固定拥有「客户订单录入」权限
-function isSalesRole(role) {
+// 普通成员（原「业务部」；role = editor / 历史 member）：**新增成员统一使用该类型** ——
+//   「业务部 / 部门主管 / 总经理」分类已取消，成员记录上改为手动填写的「职位」（position）。
+//   这类成员的具体权限全部由团队管理员在「成员管理」的成员列表里逐个设定：
+//     权限1「添加订单」：自动 —— 已分配客户即可添加订单（无客户则默认无添加订单功能）
+//     权限2「是否可以查看客户订单」（canViewCustomerOrder，默认「无」）
+//     权限3「是否可以下生产订单」（canPurchase，默认「无」）
+//     权限4「是否可以查看生产订单」（canViewPurchaseOrder，默认「无」）
+function isMemberRole(role) {
   return role === "editor" || role === "member";
 }
 
-// 权限名称（界面文案）：业务部显示为「客户订单录入」，其他角色仍是「生产单下单权限」
+// 权限名称（界面文案）：普通成员显示为「添加订单」，其他角色仍是「生产单下单权限」
 function orderPermLabel(user) {
   const role = user && user.role;
-  return isSalesRole(role) ? "客户订单录入" : "生产单下单权限";
+  return isMemberRole(role) ? "添加订单" : "生产单下单权限";
 }
 
 function canPlaceOrder(user) {
   if (!user) return false;
   if (isTeamAdmin(user.role)) return true;
-  // 业务部：固定「有」（可录入客户订单），不参与开关设置
-  if (isSalesRole(user.role)) return true;
+  // 普通成员（原业务部）：具备「添加订单」能力，是否真正生效取决于**是否已分配客户**
+  //（见 canAddOrderNow：有客户才显示「添加新订单」录入区，无客户则默认无添加订单功能）
+  if (isMemberRole(user.role)) return true;
   // 总经理 / 部门主管：固定「无」——这两个角色只做待办的查看与流转，不负责录入订单
   //（订单列表上方的「添加新订单」录入区对他们不再显示，成员管理里也不提供该开关）
   if (user.role === "superviewer" || isDeptManager(user.role)) return false;
@@ -1425,17 +1429,36 @@ function canPlaceOrder(user) {
   return false;
 }
 
-// 采购订单下单权限（订单行上黄色「自产单 / 外购单」标签：补填 / 打开采购文件链接）：
+// 权限3「是否可以下生产订单」（订单行上黄色「自产单 / 外购单」标签：点击补填采购文件链接）：
 //   · 团队管理员本人固定「有」；
-//   · 「品质部 / 财务部」固定「无」；
-//   · 其他成员以 user.canPurchase 为准（true=有 / false=无）；
-//   · 未设置过时按历史行为：与其「客户订单录入」保持一致（业务部=有，其他角色=无）。
-// 与「客户订单录入」是两个独立开关：录入订单、补填采购文件链接互不影响。
+//   · 普通成员（原业务部）：**默认「无」**，由团队管理员在「成员管理」的成员列表中逐个开关
+//     （user.canPurchase：true = 有 / false 或未设置 = 无）；
+//   · 「品质部 / 财务部」（历史账号）固定「无」；
+//   · 其他历史角色以 user.canPurchase 为准，未设置过时与其「生产单下单权限」保持一致。
+// 与「权限1 添加订单」是两个独立开关：录入订单、补填采购文件链接互不影响。
 function canPurchaseOrder(user) {
   if (!user) return false;
   if (isTeamAdmin(user.role)) return true;
   if (needsNoOrderPerm(user)) return false;
+  if (isMemberRole(user.role)) return user.canPurchase === true;
   if (typeof user.canPurchase === "boolean") return user.canPurchase;
+  return canPlaceOrder(user);
+}
+
+// 该成员是否已分配客户（权限1「添加订单」的依据：客户列表里有客户才可添加订单）
+async function hasAssignedCustomers(env, username) {
+  const customers = await getCustomers(env, username);
+  return Array.isArray(customers) && customers.length > 0;
+}
+
+// 权限1「添加订单」是否已生效（异步：需要读取该成员已分配的客户列表）：
+//   · 团队管理员本人固定可添加订单；
+//   · 普通成员（原业务部）：**已分配客户即可添加订单** —— 有客户时登录后订单列表上方显示
+//     「添加新订单」录入区；没有客户则默认无添加订单功能；
+//   · 其他历史角色（业务主管 / 生产部 / 部门主管 / 总经理等）按 canPlaceOrder 的历史规则。
+async function canAddOrderNow(env, user) {
+  if (!user) return false;
+  if (isMemberRole(user.role)) return hasAssignedCustomers(env, user.username);
   return canPlaceOrder(user);
 }
 
@@ -1448,7 +1471,7 @@ function canManageTodos(role) {
 
 // 改变待办状态（待确认 / 进行中 / 已完成）：**仅团队管理员 / 总经理**
 // （部门主管虽然能查看全部待办、指定生产方、删除待办，但状态在其清单里为**只读固定显示**，
-//   界面渲染为状态徽章（与业务部一致），接口同样拦截状态变更）
+//   界面渲染为状态徽章（与普通成员一致），接口同样拦截状态变更）
 function canChangeTodoStatus(role) {
   return isTeamAdmin(role) || role === "superviewer";
 }
@@ -1460,21 +1483,30 @@ function isDeptManager(role) {
   return role === "deptmanager";
 }
 
-// 能否查看「客户订单」链接（订单文件链接 orderUrl）：团队管理员固定可看；
-//   部门主管按开关（未设置过默认「是」，与总经理现状一致）；其他角色保持历史行为
-//   （业务部 / 生产方 / 客户可看；总经理 / 业务主管 / 生产部等不可看）
+// 权限2「是否可以查看客户订单」（点订单号 PO# 打开订单文件链接 orderUrl）：
+//   · 团队管理员固定可看；
+//   · 普通成员（原业务部）：**默认「无」**，由团队管理员在成员列表中逐个开关
+//     （user.canViewCustomerOrder：true = 是 / false 或未设置 = 否）；
+//   · 部门主管（历史角色）按开关（未设置过默认「是」）；生产方 / 客户保持历史行为可看；
+//     总经理 / 业务主管 / 生产部等不可看。
 function canViewCustomerOrder(user) {
   if (!user) return false;
   if (isTeamAdmin(user.role)) return true;
+  if (isMemberRole(user.role)) return user.canViewCustomerOrder === true;
   if (isDeptManager(user.role)) return user.canViewCustomerOrder !== false;
-  return isSalesRole(user.role) || user.role === "producer" || user.role === "customer";
+  return user.role === "producer" || user.role === "customer";
 }
 
-// 能否查看「采购订单」链接（采购文件链接 purchaseUrl）：团队管理员固定可看；
-//   部门主管按开关（未设置过默认「是」）；总经理固定可看；其他角色按「采购订单下单」权限
+// 权限4「是否可以查看生产订单」（点订单行上的「自产单 / 外购单」打开采购文件链接 purchaseUrl）：
+//   · 团队管理员固定可看；
+//   · 普通成员（原业务部）：**默认「无」**，由团队管理员在成员列表中逐个开关
+//     （user.canViewPurchaseOrder：true = 是 / false 或未设置 = 否）；
+//   · 部门主管按开关（未设置过默认「是」）；总经理固定可看；
+//   · 其他历史角色按「生产单下单权限」。
 function canViewPurchaseOrder(user) {
   if (!user) return false;
   if (isTeamAdmin(user.role)) return true;
+  if (isMemberRole(user.role)) return user.canViewPurchaseOrder === true;
   if (isDeptManager(user.role)) return user.canViewPurchaseOrder !== false;
   if (user.role === "superviewer") return true;
   return canPurchaseOrder(user);
@@ -1756,12 +1788,16 @@ async function handleApi(request, env, pathname) {
     const user = await getCurrentUser(request, env);
     if (!user) return json({ error: "未登录" }, 401);
     const info = { username: user.username, role: user.role };
-    // 生产单下单权限：团队管理员可在「成员管理」中为每个成员开关
-    info.canPlaceOrder = canPlaceOrder(user);
-    // 采购订单下单权限（补填 / 打开采购文件链接）：与上面相互独立
+    // 职位（新增成员时由团队管理员手动填写）
+    info.position = user.position || "";
+    // 权限1「添加订单」：团队管理员本人固定有；普通成员（原业务部）**已分配客户即可添加订单**
+    //（无客户则默认无添加订单功能，登录后订单列表上方不显示「添加新订单」录入区）
+    info.canPlaceOrder = await canAddOrderNow(env, user);
+    // 权限3「是否可以下生产订单」（点黄色「自产单 / 外购单」补填采购文件链接）
     info.canPurchase = canPurchaseOrder(user);
-    // 「部门主管」的两个查看权限：① 点 PO# 打开客户订单链接 ② 点「外购单 / 自产单」打开采购文件链接
+    // 权限2「是否可以查看客户订单」（点 PO# 打开订单文件链接）
     info.canViewCustomerOrder = canViewCustomerOrder(user);
+    // 权限4「是否可以查看生产订单」（点「外购单 / 自产单」打开采购文件链接）
     info.canViewPurchaseOrder = canViewPurchaseOrder(user);
     if (isTeamAdmin(user.role)) {
       info.teamId = user.teamId || user.username;
@@ -2310,30 +2346,30 @@ async function handleApi(request, env, pathname) {
     if (!user) return json({ error: "未登录" }, 401);
     if (!isTeamAdmin(user.role)) return json({ error: "无权限" }, 403);
     if (!isProTeam(user)) return proOnly();
-    const { username, password, role, dept } = await readBody(request);
+    const { username, password, position } = await readBody(request);
     if (!username || !password) {
       return json({ error: "请填写用户名和密码" }, 400);
     }
-    // 角色（新增成员可选）：
-    //   editor=业务部（默认，固定拥有「客户订单录入」权限，可再开关「采购订单下单」）
-    //   deptmanager=部门主管（功能参照总经理，另有「是否可查看客户订单 / 采购订单」两个开关）
-    //   superviewer=总经理（团队管理员的全部待办功能，无管理类功能）
-    // 注：viewer（业务主管）与 restricted（生产部 / 计划部 / 采购部 / 品质部 / 财务部）
-    //     已不再作为新增成员的选项 —— 历史账号仍保留原角色与权限；
-    //     传入这些角色时按「业务部」创建。
-    const finalRole = ["superviewer", "deptmanager"].includes(role) ? role : "editor";
+    // 成员类型：**统一创建为「普通成员」**（原「业务部」类型，role = editor）——
+    //   「业务部 / 部门主管 / 总经理」这些分类已取消，新增成员只需**手动填写「职位」**；
+    //   成员的具体权限在「成员管理」的成员列表中重新设定：
+    //     权限1「添加订单」：自动 —— 已分配客户即可添加订单（无客户则默认无添加订单功能）
+    //     权限2「是否可以查看客户订单」（默认「无」）
+    //     权限3「是否可以下生产订单」（默认「无」）
+    //     权限4「是否可以查看生产订单」（默认「无」）
+    // 注：历史账号（业务主管 / 生产部 / 部门主管 / 总经理等）保留原角色与权限。
     const existing = await env.TODO_KV.get(`user:${username}`);
     if (existing) return json({ error: "用户名已存在" }, 400);
     const newUser = {
       username,
       password: await hashPassword(password),
-      role: finalRole,
+      role: "editor",
       teamId: teamIdOf(user), // 归属创建者所在团队
       createdAt: new Date().toISOString(),
     };
-    // 部门名（仅「生产部」类角色写入；未传或非法时按「生产部」处理）
-    const deptName = normalizeDept(dept, finalRole);
-    if (deptName) newUser.dept = deptName;
+    // 职位（手动输入，可为空；过长时截断）
+    const pos = String(position === undefined || position === null ? "" : position).trim();
+    if (pos) newUser.position = pos.slice(0, 20);
     await env.TODO_KV.put(`user:${username}`, JSON.stringify(newUser));
     return json({ ok: true });
   }
@@ -2443,12 +2479,35 @@ async function handleApi(request, env, pathname) {
     return json({ ok: true, remark: targetUser.remark });
   }
 
-  // ---- 权限开关（专业版功能；团队管理员在「成员管理」里逐个开关）----
+  // ---- 成员职位（专业版功能；团队管理员手动填写 / 修改，留空表示清除）----
+  // 说明：「业务部 / 部门主管 / 总经理」分类取消后，新增成员改为手动输入「职位」。
+  if (
+    pathname.startsWith("/api/users/") &&
+    pathname.endsWith("/position") &&
+    method === "POST"
+  ) {
+    const user = await getCurrentUser(request, env);
+    if (!user) return json({ error: "未登录" }, 401);
+    if (!isTeamAdmin(user.role)) return json({ error: "无权限" }, 403);
+    if (!isProTeam(user)) return proOnly();
+    const target = decodeURIComponent(
+      pathname.replace("/api/users/", "").replace("/position", "")
+    );
+    const { position } = await readBody(request);
+    const targetUser = await getTeamMember(env, target, teamIdOf(user));
+    if (!targetUser) return json({ error: "成员不存在" }, 404);
+    targetUser.position = String(position || "").trim().slice(0, 20);
+    await env.TODO_KV.put(`user:${target}`, JSON.stringify(targetUser));
+    return json({ ok: true, position: targetUser.position });
+  }
+
+  // ---- 成员权限开关（专业版功能；团队管理员在「成员管理」的成员列表里逐个开关）----
   //   body 可带以下布尔字段（任一或组合）：
-  //     canPlaceOrder           生产单下单权限（「客户订单录入」为业务部固定权限，不接受设置）
-  //     canPurchase             采购订单下单（业务部独立开关：补填 / 打开采购文件链接）
-  //     canViewCustomerOrder    是否可查看客户订单（仅「部门主管」：点 PO# 打开客户订单链接）
-  //     canViewPurchaseOrder    是否可查看采购订单（仅「部门主管」：点「外购单 / 自产单」打开采购文件）
+  //     canPurchase             权限3「是否可以下生产订单」（点黄色「自产单 / 外购单」补填采购文件链接）
+  //     canViewCustomerOrder    权限2「是否可以查看客户订单」（点订单号 PO# 打开订单文件链接）
+  //     canViewPurchaseOrder    权限4「是否可以查看生产订单」（点「外购单 / 自产单」打开采购文件链接）
+  //     canPlaceOrder           历史字段：普通成员的权限1「添加订单」由「是否已分配客户」自动决定，
+  //                             不接受在此设置
   if (
     pathname.startsWith("/api/users/") &&
     pathname.endsWith("/order-permission") &&
@@ -2471,17 +2530,17 @@ async function handleApi(request, env, pathname) {
     }
     const targetUser = await getTeamMember(env, target, teamIdOf(user));
     if (!targetUser) return json({ error: "成员不存在" }, 404);
-    // 业务部成员固定拥有「客户订单录入」权限：不提供开关，接口也不允许设置
-    if (hasPlace && isSalesRole(targetUser.role)) {
+    // 普通成员（原业务部）的权限1「添加订单」由「客户列表」自动决定：不提供开关
+    if (hasPlace && isMemberRole(targetUser.role)) {
       return json(
         {
           error:
-            "业务部成员默认拥有「客户订单录入」权限（无需设置）；如需只读查看全部订单，请把该成员的角色改为其他类型",
+            "该成员的「添加订单」权限由「客户列表」自动决定（有客户即可添加订单），无需在此设置",
         },
         400
       );
     }
-    // 总经理 / 部门主管固定不参与订单录入（成员管理里不显示该开关）
+    // 总经理 / 部门主管（历史角色）固定不参与订单录入（成员管理里不显示该开关）
     if (hasPlace && (targetUser.role === "superviewer" || isDeptManager(targetUser.role))) {
       return json(
         {
@@ -2492,26 +2551,30 @@ async function handleApi(request, env, pathname) {
         400
       );
     }
-    // 「部门主管」专属的两个查看权限：其他角色调用时给出明确提示（避免以为已生效）
-    if ((hasViewCustomer || hasViewPurchase) && !isDeptManager(targetUser.role)) {
+    // 权限2 / 权限4：适用于「普通成员」与历史「部门主管」成员；其他角色调用时给出明确提示
+    if (
+      (hasViewCustomer || hasViewPurchase) &&
+      !isMemberRole(targetUser.role) &&
+      !isDeptManager(targetUser.role)
+    ) {
       return json(
         {
           error:
-            "「是否可查看客户订单 / 采购订单」仅适用于「部门主管」成员（当前成员角色："
+            "「是否可以查看客户订单 / 查看生产订单」仅适用于普通成员（原业务部）与「部门主管」成员（当前成员："
             + memberRoleLabel(targetUser)
             + "）",
         },
         400
       );
     }
-    // 「品质部 / 财务部」成员不需要下单相关权限：成员管理里不显示开关，接口也不允许开启
+    // 「品质部 / 财务部」（历史账号）不需要下单相关权限：成员管理里不显示开关，接口也不允许开启
     if (needsNoOrderPerm(targetUser) && (hasPlace || hasPurchase)) {
       return json(
         {
           error:
             memberRoleLabel(targetUser) +
             "成员不需要「" +
-            (hasPurchase ? "采购订单下单" : "生产单下单权限") +
+            (hasPurchase ? "下生产订单" : "生产单下单权限") +
             "」（该部门无录入/下单需求），无需设置",
         },
         400
@@ -2532,7 +2595,7 @@ async function handleApi(request, env, pathname) {
   }
 
 
-  // ---- 客户分配（团队管理员可操作本团队成员；业务部可查自己的）----
+  // ---- 客户分配（团队管理员可操作本团队成员；成员可查自己的）----
   // 获取某成员的客户列表
   if (pathname.startsWith("/api/customers/") && method === "GET") {
     const user = await getCurrentUser(request, env);
@@ -2595,7 +2658,7 @@ async function handleApi(request, env, pathname) {
   }
 
 
-  // ---- 客户管理（专业版功能；团队内共享，成员管理中为「业务部」分配客户时从这里选择）----
+  // ---- 客户管理（专业版功能；团队内共享，成员管理中为成员分配客户时从这里选择）----
   // 获取本团队客户列表（专业版功能：仅专业版团队账号可读）
   if (pathname === "/api/customer-list" && method === "GET") {
     const user = await getCurrentUser(request, env);
@@ -2988,9 +3051,9 @@ async function handleApi(request, env, pathname) {
         allUsers: true,
       });
     }
-    // 业务部成员：只返回自己的订单，并携带 owner（清单里每条订单都显示录入者）
-    // 注：业务部（editor / member）始终拥有「客户订单录入」权限（见 canPlaceOrder），
-    //     成员管理里不再提供该开关，因此这里不再有「关闭录入后只读查看全部订单」的分支。
+    // 普通成员（原业务部）：只返回自己的订单，并携带 owner（清单里每条订单都显示录入者）
+    // 注：是否显示「添加新订单」录入区由**是否已分配客户**决定（见 /api/me 的 canPlaceOrder），
+    //     这里的订单可见范围与其无关。
     const own = await getTodos(env, user.username);
     return json({
       todos: own.map((t) => Object.assign({}, t, { owner: user.username })),
@@ -3001,9 +3064,18 @@ async function handleApi(request, env, pathname) {
   if (pathname === "/api/todos" && method === "POST") {
     const user = await getCurrentUser(request, env);
     if (!user) return json({ error: "未登录" }, 401);
-    // 生产单下单权限：团队管理员本人固定有；成员可视「成员管理」里逐个开关
-    // （历史行为不变：业务部有、业务主管/生产部/总经理无）
-    if (!canPlaceOrder(user)) {
+    // 权限1「添加订单」：团队管理员本人固定有；普通成员（原业务部）**已分配客户即可添加订单**
+    //（无客户则默认无添加订单功能）；历史「部门主管 / 总经理」固定不录入订单
+    if (!(await canAddOrderNow(env, user))) {
+      if (isMemberRole(user.role)) {
+        return json(
+          {
+            error:
+              "暂无客户，请联系团队管理员在「成员管理」的「客户列表」中为你添加客户（有客户即可添加订单）",
+          },
+          403
+        );
+      }
       return json(
         {
           error:
@@ -3257,8 +3329,8 @@ async function handleApi(request, env, pathname) {
   }
 
   // ---- 补填「采购文件链接」（订单行上缺链接的黄色「自产单 / 外购单」标签）----
-  //   规则：① 登录且「采购订单下单」权限 = 有（团队管理员固定有；业务部成员在「成员管理」中单独开关，
-  //          与「客户订单录入」相互独立）；
+  //   规则：① 登录且权限3「是否可以下生产订单」= 有（团队管理员固定有；普通成员在「成员管理」的
+  //          成员列表中单独开关，与权限1「添加订单」相互独立）；
   //         ② 只能补「当前没有采购文件链接」的订单（已有链接仍需团队管理员在「待确认」阶段修改）；
   //         ③ 只能操作自己或本团队成员的订单（团队隔离）；不限订单状态。
   if (
@@ -3273,7 +3345,7 @@ async function handleApi(request, env, pathname) {
         {
           error:
             memberRoleLabel(user) +
-            "无「采购订单下单」权限，请联系团队管理员在「成员管理」中开通",
+            "无「下生产订单」权限，请联系团队管理员在「成员管理」中开通",
         },
         403
       );
