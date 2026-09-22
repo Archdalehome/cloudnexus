@@ -2348,13 +2348,19 @@ ${commonStyle}
 
     // 业务主管：待办本身只读（无删除按钮），但可添加备注
     // 已进入「进行中/已完成」状态的事件不可删除（含管理员，避免误删）
-    const canDelete = !isObserver && st === 'pending';
+    // 是否本人录入的订单：普通成员在「客户列表为空 → 查看全部订单」时能看到他人的订单，
+    // 这些订单在其清单里为只读（不显示「删除订单 / 添加备注」，避免操作被接口拒绝）
+    const isOwnOrder = !t.owner || t.owner === currentUser.username;
+    // 可对该订单做备注 / 删除操作的身份：观察类角色（业务主管 / 生产部 / 生产方 / 客户，只读但可备注）、
+    // 待办管理者（团队管理员 / 总经理 / 部门主管）、订单本人
+    const canOperateOrder = isObserver || isTodoManager || isOwnOrder;
+    const canDelete = !isObserver && st === 'pending' && (isTodoManager || isOwnOrder);
 
     const delBtn = canDelete
       ? \`<button class="btn-danger" data-del="\${t.id}">删除订单</button>\`
       : '';
-    // 已完成的事件不可再添加备注
-    const noteAddBlock = st === 'done'
+    // 已完成的事件不可再添加备注；无操作权限的订单（他人订单）也不显示备注框
+    const noteAddBlock = (st === 'done' || !canOperateOrder)
       ? ''
       : \`<div class="note-add">
               <textarea class="note-input" data-note-input="\${t.id}" placeholder="添加备注（添加后不可删除；输入 @ 可提醒团队成员）..."></textarea>
@@ -3373,14 +3379,17 @@ ${commonStyle}
         };
         const isDeptMgrRow = u.role === 'deptmanager';
         const isSuperviewerRow = u.role === 'superviewer';
-        // 权限1「添加订单」：自动 —— 该成员的客户列表里有客户即可添加订单
+        // 权限1「添加订单」：自动 —— 该成员的客户列表里有客户即可添加订单（只显示自己的订单）；
+        // 客户列表为空时权限为「无」：不显示「添加新订单」录入区，但可以**查看全部订单**（只读）
         const myCustomers = customerMap[u.username] || [];
         const hasCustomers = myCustomers.length > 0;
         const orderPermBlock = noOrderPerm ? '' : (isMemberRow
           ? '<div class="order-perm-col">' +
-              '<span class="order-perm-static" title="权限1「添加订单」自动生效：客户列表里有客户即可添加订单；没有客户则默认无添加订单功能">' +
+              '<span class="order-perm-static" title="权限1「添加订单」自动生效：客户列表里有客户 → 可添加订单（并只看自己的订单）；没有客户 → 权限为「无」、不显示录入区，但可以查看全部订单（只读）">' +
                 '添加订单：<b>' + (hasCustomers ? '有' : '无') + '</b>' +
-                (hasCustomers ? '（已有 ' + myCustomers.length + ' 个客户）' : '（请先分配客户）') +
+                (hasCustomers
+                  ? '（已有 ' + myCustomers.length + ' 个客户）'
+                  : '（可查看全部订单）') +
               '</span>' +
               permToggle('data-canvieworder', '是否可以查看客户订单', u.canViewCustomerOrder === true, '是', '否') +
               permToggle('data-canpurchase', '是否可以下生产订单', u.canPurchase === true, '是', '否') +

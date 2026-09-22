@@ -3051,9 +3051,17 @@ async function handleApi(request, env, pathname) {
         allUsers: true,
       });
     }
-    // 普通成员（原业务部）：只返回自己的订单，并携带 owner（清单里每条订单都显示录入者）
-    // 注：是否显示「添加新订单」录入区由**是否已分配客户**决定（见 /api/me 的 canPlaceOrder），
-    //     这里的订单可见范围与其无关。
+    // 普通成员（原业务部）的订单可见范围由权限1「添加订单」决定：
+    //   · 已分配客户（权限1 = 有）：只返回**自己的订单**，并携带 owner（清单里每条订单都显示录入者）；
+    //   · 客户列表为空（权限1 = 无）：可**查看本团队全部订单**（只读 —— 不能改状态、
+    //     不能删除他人的订单、也不能给他人的订单加备注，接口层同样做了限制）。
+    if (isMemberRole(user.role) && !(await hasAssignedCustomers(env, user.username))) {
+      return json({
+        todos: await getAllTodos(env, teamId, false),
+        readonly: true,
+        allUsers: true,
+      });
+    }
     const own = await getTodos(env, user.username);
     return json({
       todos: own.map((t) => Object.assign({}, t, { owner: user.username })),
