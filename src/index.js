@@ -1112,6 +1112,10 @@ async function listUsers(env, teamId) {
         canUpdateStatus: canUpdateOrderStatus(u),
         // 权限「是否可查看全部订单」（普通成员，**默认「是」**：可查看本团队全部订单）
         canViewAllOrders: canViewAllTeamOrders(u),
+        // 权限6「是否可以下脱敏订单」（订单号右侧的「回形针」补填脱敏订单文件链接）
+        canPlaceMaskedOrder: canPlaceMaskedOrder(u),
+        // 权限7「是否可以添加出货日期」（「交期」右侧的灰色空白区块：点击添加出货日期）
+        canAddShipDate: canAddShipDate(u),
       };
       // 生产部（含计划部 / 采购部 / 品质部 / 财务部）附带「可观察生产方」id 列表
       if (u.role === "restricted") {
@@ -1595,6 +1599,34 @@ function canViewPurchaseOrder(user) {
   return canPurchaseOrder(user);
 }
 
+// 权限6「是否可以下脱敏订单」（订单行上订单号右侧的「回形针」图标：点击补填脱敏订单文件链接）：
+//   · 团队管理员本人固定「有」；
+//   · 普通成员（原业务部）：**默认「无」**，由团队管理员在「成员管理」的成员列表中逐个开关
+//     （user.canPlaceMaskedOrder：true = 有 / false 或未设置 = 无）；
+//   · 其他历史角色固定「无」。
+// 注：该权限只决定**能否补填**脱敏订单文件链接；链接一旦填写，所有能看到该订单的用户都可以
+//     点击「回形针」图标打开该链接（脱敏文件不含敏感信息，故不做二次权限限制）。
+function canPlaceMaskedOrder(user) {
+  if (!user) return false;
+  if (isTeamAdmin(user.role)) return true;
+  if (isMemberRole(user.role)) return user.canPlaceMaskedOrder === true;
+  return false;
+}
+
+
+// 权限7「是否可以添加出货日期」（订单行上「交期」右侧的灰色空白区块：点击添加出货日期）：
+//   · 团队管理员本人固定「有」；
+//   · 普通成员（原业务部）：**默认「无」**，由团队管理员在「成员管理」的成员列表中逐个开关
+//     （user.canAddShipDate：true = 有 / false 或未设置 = 无）；
+//   · 其他历史角色固定「无」。
+// 注：该权限只决定**能否添加**出货日期；出货日期一旦填写，所有能看到该订单的用户都能看到该日期，
+//     且该区块**不能再被点击重复添加**。
+function canAddShipDate(user) {
+  if (!user) return false;
+  if (isTeamAdmin(user.role)) return true;
+  if (isMemberRole(user.role)) return user.canAddShipDate === true;
+  return false;
+}
 
 // 获取本团队所有用户的待办
 // onlyVisible=true 时仅返回「进行中/已完成」的待办（业务主管可见范围）
@@ -1887,6 +1919,10 @@ async function handleApi(request, env, pathname) {
     // 权限「是否可查看全部订单」（普通成员，**默认「是」**）：= 是 → 可见本团队全部订单（只读，可备注）；
     // = 否 → 只能查看自己录入的订单（与「客户列表」无关：客户只决定能否录入订单）
     info.canViewAllOrders = canViewAllTeamOrders(user);
+    // 权限6「是否可以下脱敏订单」（订单号右侧灰色的「回形针」：点击补填脱敏订单文件链接）
+    info.canPlaceMaskedOrder = canPlaceMaskedOrder(user);
+    // 权限7「是否可以添加出货日期」（「交期」右侧的灰色空白区块：点击添加出货日期）
+    info.canAddShipDate = canAddShipDate(user);
     if (isTeamAdmin(user.role)) {
       info.teamId = user.teamId || user.username;
       info.teamName = user.teamName || user.username;
@@ -2624,6 +2660,12 @@ async function handleApi(request, env, pathname) {
   //     canViewAllOrders        新权限「是否可查看全部订单」（普通成员，**默认「是」**）：
   //                             = 是 → 可见本团队全部订单（他人录入的订单为只读，可添加备注）；
   //                             = 否 → 只能查看自己录入的订单（与「客户列表」无关）
+  //     canPlaceMaskedOrder     权限6「是否可以下脱敏订单」（普通成员**默认「否」**）：
+  //                             = 是 → 可在订单列表中点击订单号右侧灰色的「回形针」图标
+  //                             补填**脱敏订单文件链接**（已有链接时该图标只用于打开链接）
+  //     canAddShipDate          权限7「是否可以添加出货日期」（普通成员**默认「否」**）：
+  //                             = 是 → 可点击订单行「交期」右侧的灰色空白区块**添加出货日期**
+  //                             （已填写出货日期的订单只显示日期，不能再次添加）
   //     canPlaceOrder           历史字段：普通成员的权限1「添加订单」由「是否已分配客户」自动决定，
   //                             不接受在此设置
   if (
@@ -2645,13 +2687,17 @@ async function handleApi(request, env, pathname) {
     const hasViewPurchase = typeof body.canViewPurchaseOrder === "boolean";
     const hasUpdateStatus = typeof body.canUpdateStatus === "boolean";
     const hasViewAllOrders = typeof body.canViewAllOrders === "boolean";
+    const hasMaskedOrder = typeof body.canPlaceMaskedOrder === "boolean";
+    const hasShipDate = typeof body.canAddShipDate === "boolean";
     if (
       !hasPlace &&
       !hasPurchase &&
       !hasViewCustomer &&
       !hasViewPurchase &&
       !hasUpdateStatus &&
-      !hasViewAllOrders
+      !hasViewAllOrders &&
+      !hasMaskedOrder &&
+      !hasShipDate
     ) {
       return json({ error: "请传入 true（有）或 false（无）" }, 400);
     }
@@ -2703,6 +2749,32 @@ async function handleApi(request, env, pathname) {
         400
       );
     }
+    // 权限6「是否可以下脱敏订单」仅适用于普通成员（原业务部）：
+    // 历史角色（总经理 / 部门主管 / 业务主管 / 生产部 / 生产方 / 客户）固定「无」
+    if (hasMaskedOrder && !isMemberRole(targetUser.role)) {
+      return json(
+        {
+          error:
+            "「是否可以下脱敏订单」仅适用于普通成员（原业务部）（当前成员："
+            + memberRoleLabel(targetUser)
+            + "）",
+        },
+        400
+      );
+    }
+    // 权限7「是否可以添加出货日期」仅适用于普通成员（原业务部）：
+    // 历史角色（总经理 / 部门主管 / 业务主管 / 生产部 / 生产方 / 客户）固定「无」
+    if (hasShipDate && !isMemberRole(targetUser.role)) {
+      return json(
+        {
+          error:
+            "「是否可以添加出货日期」仅适用于普通成员（原业务部）（当前成员："
+            + memberRoleLabel(targetUser)
+            + "）",
+        },
+        400
+      );
+    }
     // 权限2 / 权限4：适用于「普通成员」与历史「部门主管」成员；其他角色调用时给出明确提示
     if (
       (hasViewCustomer || hasViewPurchase) &&
@@ -2738,6 +2810,8 @@ async function handleApi(request, env, pathname) {
     if (hasViewPurchase) targetUser.canViewPurchaseOrder = body.canViewPurchaseOrder;
     if (hasUpdateStatus) targetUser.canUpdateStatus = body.canUpdateStatus;
     if (hasViewAllOrders) targetUser.canViewAllOrders = body.canViewAllOrders;
+    if (hasMaskedOrder) targetUser.canPlaceMaskedOrder = body.canPlaceMaskedOrder;
+    if (hasShipDate) targetUser.canAddShipDate = body.canAddShipDate;
     await env.TODO_KV.put(`user:${target}`, JSON.stringify(targetUser));
     return json({
       ok: true,
@@ -2747,6 +2821,8 @@ async function handleApi(request, env, pathname) {
       canViewPurchaseOrder: canViewPurchaseOrder(targetUser),
       canUpdateStatus: canUpdateOrderStatus(targetUser),
       canViewAllOrders: canViewAllTeamOrders(targetUser),
+      canPlaceMaskedOrder: canPlaceMaskedOrder(targetUser),
+      canAddShipDate: canAddShipDate(targetUser),
     });
   }
 
@@ -3574,6 +3650,107 @@ async function handleApi(request, env, pathname) {
     todos[idx].purchaseUrl = link;
     await saveTodos(env, owner, todos);
     return json({ ok: true, purchaseUrl: link });
+  }
+
+  // ---- 补填「脱敏订单文件链接」（订单行上订单号右侧的「回形针」图标）----
+  //   规则：① 登录且权限6「是否可以下脱敏订单」= 有（团队管理员固定有；普通成员在「成员管理」的
+  //          成员列表中单独开关，**默认「无」**）；
+  //         ② 只能补「当前没有脱敏订单文件链接」的订单 —— 已有链接时，订单号右侧的「回形针」
+  //          只会打开该链接，**不再提供补填功能**；
+  //         ③ 只能操作自己或本团队成员的订单（团队隔离）；不限订单状态。
+  if (
+    pathname.startsWith("/api/todos/") &&
+    pathname.endsWith("/masked-link") &&
+    method === "POST"
+  ) {
+    const user = await getCurrentUser(request, env);
+    if (!user) return json({ error: "未登录" }, 401);
+    if (!canPlaceMaskedOrder(user)) {
+      return json(
+        {
+          error:
+            memberRoleLabel(user) +
+            "无「下脱敏订单」权限，请联系团队管理员在「成员管理」中开通",
+        },
+        403
+      );
+    }
+    const id = decodeURIComponent(
+      pathname.replace("/api/todos/", "").replace("/masked-link", "")
+    );
+    const body = await readBody(request);
+    let owner = user.username;
+    if (body.owner && body.owner !== user.username) {
+      const member = await getTeamMember(env, body.owner, teamIdOf(user));
+      if (!member) return json({ error: "无权操作该用户的待办" }, 403);
+      owner = body.owner;
+    }
+    const todos = await getTodos(env, owner);
+    const idx = todos.findIndex((t) => t.id === id);
+    if (idx === -1) return json({ error: "未找到" }, 404);
+    if (todos[idx].maskedUrl) {
+      return json(
+        { error: "该订单已有脱敏订单文件链接，填写后不可再修改" },
+        403
+      );
+    }
+    const link = normalizeOrderUrl(body.maskedUrl);
+    if (link === null) {
+      return json({ error: "脱敏订单文件链接需以 http:// 或 https:// 开头" }, 400);
+    }
+    if (!link) return json({ error: "请输入脱敏订单文件链接" }, 400);
+    todos[idx].maskedUrl = link;
+    await saveTodos(env, owner, todos);
+    return json({ ok: true, maskedUrl: link });
+  }
+
+  // ---- 添加「出货日期」（订单行上「交期」右侧的灰色空白区块）----
+  //   规则：① 登录且权限7「是否可以添加出货日期」= 有（团队管理员固定有；普通成员在「成员管理」的
+  //          成员列表中单独开关，**默认「无」**）；
+  //         ② 只能为**尚未填写**出货日期的订单添加 —— 已填写出货日期的订单在该区块只显示日期，
+  //          **不能再被点击重复添加**；
+  //         ③ 只能操作自己或本团队成员的订单（团队隔离）；不限订单状态。
+  if (
+    pathname.startsWith("/api/todos/") &&
+    pathname.endsWith("/ship-date") &&
+    method === "POST"
+  ) {
+    const user = await getCurrentUser(request, env);
+    if (!user) return json({ error: "未登录" }, 401);
+    if (!canAddShipDate(user)) {
+      return json(
+        {
+          error:
+            memberRoleLabel(user) +
+            "无「添加出货日期」权限，请联系团队管理员在「成员管理」中开通",
+        },
+        403
+      );
+    }
+    const id = decodeURIComponent(
+      pathname.replace("/api/todos/", "").replace("/ship-date", "")
+    );
+    const body = await readBody(request);
+    let owner = user.username;
+    if (body.owner && body.owner !== user.username) {
+      const member = await getTeamMember(env, body.owner, teamIdOf(user));
+      if (!member) return json({ error: "无权操作该用户的待办" }, 403);
+      owner = body.owner;
+    }
+    const todos = await getTodos(env, owner);
+    const idx = todos.findIndex((t) => t.id === id);
+    if (idx === -1) return json({ error: "未找到" }, 404);
+    if (todos[idx].shipDate) {
+      return json({ error: "该订单已添加出货日期，不能重复添加" }, 403);
+    }
+    const shipDate = String(body.shipDate || "").trim();
+    if (!shipDate) return json({ error: "请选择出货日期" }, 400);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(shipDate)) {
+      return json({ error: "请输入正确的出货日期" }, 400);
+    }
+    todos[idx].shipDate = shipDate;
+    await saveTodos(env, owner, todos);
+    return json({ ok: true, shipDate });
   }
 
   if (pathname.startsWith("/api/todos/") && method === "DELETE") {
