@@ -23,6 +23,8 @@ import { connect } from "cloudflare:sockets";
 const DEFAULT_TEAM = "default"; // 历史数据（无 teamId）默认归属的团队
 const PLATFORM_TEAM = "__platform__"; // 超级管理员不属于任何团队（不参与业务数据）
 const DAY_MS = 24 * 60 * 60 * 1000;
+// 默认站点名称（超级管理员未在「系统设置」中自定义时使用；产品名：订单管理系统）
+const DEFAULT_SITE_NAME = "订单管理系统";
 // 管理类功能（成员 / 生产方 / 客户管理）为专业版功能，试用账号调用时返回该提示
 const PRO_ONLY_MSG =
   "该功能为专业版功能：请点击顶栏「订阅」升级为专业用户后使用（试用账号仅限本人使用与添加订单）";
@@ -379,7 +381,7 @@ async function getGlobalSettings(env) {
     settings = {};
   }
   return {
-    siteName: settings.siteName || "待办清单",
+    siteName: settings.siteName || DEFAULT_SITE_NAME,
     allowRegister: settings.allowRegister !== false,
     // 支持邮箱：未设置过 → 默认值；显式设为空字符串 → 登录页不显示该提示
     supportEmail:
@@ -389,6 +391,20 @@ async function getGlobalSettings(env) {
     // 网站图标（favicon）图片链接：为空表示使用默认图标（浏览器标签页不额外指定）
     favicon: String(settings.favicon || "").trim(),
   };
+}
+
+// 页面左上角显示的名称（服务端渲染用 —— 避免首屏先显示默认站名、随后才被前端脚本替换的闪现）：
+//   · 有团队信息（团队账号本人 / 团队成员 / 生产方 / 客户）→ 所属团队名称；
+//   · 没有团队信息（历史数据 / 未登录）→ 全局「网站名称」，再回退到默认站名。
+// 与 /api/settings 返回的 teamName 口径一致。
+async function pageSiteName(env, user, globalSettings) {
+  let teamName = "";
+  if (user) {
+    const team = isTeamAdmin(user.role) ? user : await getTeam(env, teamIdOf(user));
+    teamName = team ? team.teamName || team.username : "";
+  }
+  const globalName = globalSettings ? String(globalSettings.siteName || "").trim() : "";
+  return teamName || globalName || DEFAULT_SITE_NAME;
 }
 
 // 密钥掩码：只显示首尾各 4 位（用于控制台展示已保存的 API Key / 授权码）
@@ -756,7 +772,7 @@ async function sendMail(env, cfg, mail, opts) {
 
 // 邮箱确认码邮件内容（主题 / 纯文本 / HTML）
 async function verifyCodeMailBody(env, user, code) {
-  let siteName = "待办清单";
+  let siteName = DEFAULT_SITE_NAME;
   try {
     const raw = await env.TODO_KV.get("settings");
     if (raw) {
@@ -797,7 +813,7 @@ async function verifyCodeMailBody(env, user, code) {
 //   收件人 = 申请人（团队账号邮箱），抄送 = 管理员提醒邮箱；
 //   正文 = 申请人信息 + 订阅套餐信息 + 超级管理员在「邮件设置」里维护的自定义说明与收款二维码
 async function subscribeRequestMailBody(env, team, req, cfg, kind) {
-  let siteName = "待办清单";
+  let siteName = DEFAULT_SITE_NAME;
   try {
     const raw = await env.TODO_KV.get("settings");
     if (raw) {
@@ -3629,7 +3645,9 @@ export default {
       // 先看到录入框、随后才被前端脚本隐藏的闪现（FOUC）。
       const user = await getCurrentUser(request, env);
       const canPlaceOrder = user ? await canAddOrderNow(env, user) : false;
-      return new Response(todoPage(g.favicon, canPlaceOrder), {
+      // 左上角名称（所属团队名 / 全局网站名）同样在服务端确定：避免先闪一下默认站名再变成团队名
+      const siteName = await pageSiteName(env, user, g);
+      return new Response(todoPage(g.favicon, canPlaceOrder, siteName), {
         headers: { "Content-Type": "text/html; charset=utf-8" },
       });
     }
@@ -3644,7 +3662,8 @@ export default {
         return Response.redirect(url.origin + "/todos", 302);
       }
       const g = await getGlobalSettings(env);
-      return new Response(adminPage(g.favicon), {
+      // 控制台顶栏名称也用全局「网站名称」在服务端渲染（避免先显示「团队用户管理」再被替换）
+      return new Response(adminPage(g.favicon, g.siteName), {
         headers: { "Content-Type": "text/html; charset=utf-8" },
       });
     }

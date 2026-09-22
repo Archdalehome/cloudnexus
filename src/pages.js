@@ -105,7 +105,7 @@ const LOGIN_REGISTER_CARD = `
   </div>`;
 
 export function loginPage(siteName, allowRegister, supportEmail, favicon) {
-  const name = siteName || '待办清单';
+  const name = siteName || '订单管理系统';
   // 是否允许新用户注册：**默认允许**（未设置过时与历史行为一致）
   //   关闭注册时不渲染「新帐户注册」按钮与注册卡片（后端 /api/register 也会拒绝）
   const canRegister = allowRegister !== false;
@@ -595,15 +595,19 @@ ${canRegister ? LOGIN_REGISTER_CARD : ""}
 // ============ 待办事件页 ============
 // canPlaceOrder：当前用户是否有「添加新订单」录入权限（由服务端在渲染时判定；
 //   false 时直接把录入区渲染为 display:none，避免登录瞬间的闪现；undefined/未传则按显示处理）
-export function todoPage(favicon, canPlaceOrder) {
+// siteName：左上角显示的名称（所属团队名 / 全局网站名），同样由服务端渲染 ——
+//   避免首屏先闪一下「订单管理系统」再变成团队名
+export function todoPage(favicon, canPlaceOrder, siteName) {
   // 省略参数时按「显示」处理（与历史行为一致）；显式 false 才隐藏
   const addRowHidden = canPlaceOrder === false;
+  const pageName = String(siteName === undefined || siteName === null ? '' : siteName).trim() ||
+    '订单管理系统';
   return `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>我的待办 - 待办清单</title>
+<title>我的待办 - ${escapeText(pageName)}</title>
 ${faviconTag(favicon)}
 <style>
 ${commonStyle}
@@ -1653,7 +1657,7 @@ ${commonStyle}
 <body>
   <div class="topbar">
     <div class="brand">
-      <span id="siteName">待办清单</span>
+      <span id="siteName">${escapeText(pageName)}</span>
       <span id="teamBadge" style="display:none"></span>
       <button class="btn-renew" id="btnSubscribe" style="display:none">订阅</button>
     </div>
@@ -2218,7 +2222,7 @@ ${commonStyle}
       // 左上角显示**所属团队名称**（团队账号本人与团队成员一致）；
       // 没有团队信息时（如历史数据 / 无团队账号）回退到全局网站名称
       const teamName = (currentUser && currentUser.teamName) || s.teamName || '';
-      const name = teamName || s.siteName || '待办清单';
+      const name = teamName || s.siteName || '订单管理系统';
       document.getElementById('siteName').textContent = name;
       document.title = name;
     } catch (e) { /* 忽略 */ }
@@ -4296,13 +4300,16 @@ ${commonStyle}
 // ============ 超级管理员控制台（团队用户管理） ============
 // 超级管理员（默认 admin/admin）只用于管理「团队用户」：
 // 开通 / 停用 / 开通或续费（升级为专业版） / 重置密码 / 备注信息，以及全局「网站名称」设置。
-export function adminPage(favicon) {
+export function adminPage(favicon, siteName) {
+  // 顶栏名称（全局「网站名称」，服务端渲染，避免先显示占位文案再被替换）
+  const pageName = String(siteName === undefined || siteName === null ? '' : siteName).trim() ||
+    '订单管理系统';
   return `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>团队用户管理</title>
+<title>${escapeText(pageName)} · 团队用户管理</title>
 ${faviconTag(favicon)}
 <style>
 ${commonStyle}
@@ -4599,7 +4606,7 @@ ${commonStyle}
 <body>
   <div class="topbar">
     <div class="brand">
-      <span id="siteName">团队用户管理</span>
+      <span id="siteName">${escapeText(pageName)}</span>
       <span class="role-tag">超级管理员</span>
     </div>
     <div class="user-area">
@@ -4823,7 +4830,7 @@ ${commonStyle}
       </div>
       <div class="field">
         <label>发件人名称（选填）</label>
-        <input type="text" id="mailFromName" maxlength="30" placeholder="例如：待办清单">
+        <input type="text" id="mailFromName" maxlength="30" placeholder="例如：订单管理系统">
       </div>
       <div class="field">
         <label class="check-line">
@@ -4867,7 +4874,7 @@ ${commonStyle}
 
 <script>
   let teams = [];
-  let siteNameCache = '待办清单';
+  let siteNameCache = '订单管理系统';
   // 是否允许新用户注册（默认允许；仅超级管理员可在「系统设置」中关闭）
   let allowRegisterCache = true;
   // 登录页「忘记密码请联系」的邮箱（默认 support@cloudnexus.cn；为空则不显示该提示）
@@ -5571,7 +5578,7 @@ ${commonStyle}
       if (me.role !== 'superadmin') { location.href = '/todos'; return; }
       document.getElementById('currentUser').textContent = me.username;
       const s = await api('/api/settings');
-      siteNameCache = (s.settings && s.settings.siteName) || '待办清单';
+      siteNameCache = (s.settings && s.settings.siteName) || '订单管理系统';
       allowRegisterCache = !(s.settings && s.settings.allowRegister === false);
       supportEmailCache = (s.settings && s.settings.supportEmail) || '';
       faviconCache = (s.settings && s.settings.favicon) || '';
