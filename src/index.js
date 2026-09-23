@@ -1214,7 +1214,7 @@ async function saveCustomers(env, username, customers) {
   await env.TODO_KV.put(`customers:${username}`, JSON.stringify(customers));
 }
 
-// 获取某成员的「可查看订单客户列表」：
+// 获取某成员的「可查看客户清单」：
 //   仅对「是否可查看全部订单」= 否 的普通成员生效 —— 该成员只能查看
 //   ① 自己录入的订单、② 这些客户的订单（订单的 customer 名称命中即为可见）；
 //   列表为空 → 只能查看自己录入的订单。
@@ -1224,7 +1224,7 @@ async function getViewCustomers(env, username) {
   return raw ? JSON.parse(raw) : [];
 }
 
-// 保存某成员的「可查看订单客户列表」
+// 保存某成员的「可查看客户清单」
 async function saveViewCustomers(env, username, list) {
   await env.TODO_KV.put(`viewCustomers:${username}`, JSON.stringify(list));
 }
@@ -1548,7 +1548,7 @@ function canUpdateOrderStatus(user) {
 // 权限「是否可查看全部订单」（普通成员，**默认「是」**）：
 //   · = 是（字段未设置或为 true）：该成员的订单列表显示**本团队全部订单**（含待确认）——
 //     他人录入的订单在其清单里为只读（不能改状态 / 不能指定生产方 / 不能删除），但**可添加备注**；
-//   · = 否：只能查看 ①自己录入的订单 与 ②「可查看订单客户列表」中客户的订单
+//   · = 否：只能查看 ①自己录入的订单 与 ②「可查看客户清单」中客户的订单
 //     （该列表由团队管理员在「成员管理」中维护；列表为空 → 只能查看自己录入的订单）。
 // 注：「客户列表」（现名「可录入订单客户列表」）只决定权限1「添加订单」是否生效
 //     （有客户才能录入订单），**不再是**可见范围的依据。
@@ -1590,11 +1590,11 @@ function canNoteOthersTodos(user) {
   return false;
 }
 
-// 新功能「可查看订单客户列表」（「是否可查看全部订单」= 否 的普通成员）：
-//   · 该成员除了**自己录入的订单**外，还能看到「可查看订单客户列表」中客户的订单（本团队，含待确认）；
+// 新功能「可查看客户清单」（「是否可查看全部订单」= 否 的普通成员）：
+//   · 该成员除了**自己录入的订单**外，还能看到「可查看客户清单」中客户的订单（本团队，含待确认）；
 //   · 这些订单在其清单里为**只读**（不能改状态、不能指定生产方、不能删除），但**可追加备注**；
 //   · 该列表为空时 → 只能查看自己录入的订单（与历史行为一致）。
-// 返回该成员「可查看订单客户列表」中的客户名称（去空、去重；= 查看全部订单 的成员返回空数组）
+// 返回该成员「可查看客户清单」中的客户名称（去空、去重；= 查看全部订单 的成员返回空数组）
 async function viewCustomerNamesOf(env, user) {
   if (!user || !isMemberRole(user.role) || canViewAllTeamOrders(user)) return [];
   const list = await getViewCustomers(env, user.username);
@@ -1607,7 +1607,7 @@ async function viewCustomerNamesOf(env, user) {
 }
 
 // 该成员能否为「某位成员的某条订单」追加备注：
-//   仅当这条订单的客户在其「可查看订单客户列表」中（即该订单在其清单里可见）时才允许。
+//   仅当这条订单的客户在其「可查看客户清单」中（即该订单在其清单里可见）时才允许。
 async function canNoteVisibleOrderForMember(env, user, targetOwner, todoId) {
   if (!user || !isMemberRole(user.role) || canViewAllTeamOrders(user)) return false;
   if (!targetOwner || targetOwner === user.username) return false;
@@ -1762,7 +1762,7 @@ async function deleteAccountData(env, username) {
   await env.TODO_KV.delete(`user:${username}`);
   await env.TODO_KV.delete(`todos:${username}`);
   await env.TODO_KV.delete(`customers:${username}`);
-  await env.TODO_KV.delete(`viewCustomers:${username}`); // 「可查看订单客户列表」
+  await env.TODO_KV.delete(`viewCustomers:${username}`); // 「可查看客户清单」
   await env.TODO_KV.delete(`watch:${username}`);
   await env.TODO_KV.delete(`mentions:${username}`);
   await env.TODO_KV.delete(`emailcode:${username}`);
@@ -1981,7 +1981,7 @@ async function handleApi(request, env, pathname) {
     // 权限5「是否可以更新订单状态」= 有 时，订单列表显示与功能与团队管理员相同
     info.canUpdateStatus = canUpdateOrderStatus(user);
     // 权限「是否可查看全部订单」（普通成员，**默认「是」**）：= 是 → 可见本团队全部订单（只读，可备注）；
-    // = 否 → 只能查看 自己录入的订单 + 「可查看订单客户列表」中客户的订单
+    // = 否 → 只能查看 自己录入的订单 + 「可查看客户清单」中客户的订单
     //（与「可录入订单客户列表」无关：后者只决定能否录入订单）
     info.canViewAllOrders = canViewAllTeamOrders(user);
     // 权限6「是否可以下脱敏订单」（订单号右侧灰色的「回形针」：点击补填脱敏订单文件链接）
@@ -2629,7 +2629,7 @@ async function handleApi(request, env, pathname) {
     await env.TODO_KV.delete(`user:${target}`);
     await env.TODO_KV.delete(`todos:${target}`);
     await env.TODO_KV.delete(`customers:${target}`);
-    await env.TODO_KV.delete(`viewCustomers:${target}`); // 「可查看订单客户列表」一并清理
+    await env.TODO_KV.delete(`viewCustomers:${target}`); // 「可查看客户清单」一并清理
     await env.TODO_KV.delete(`watch:${target}`);
     await env.TODO_KV.delete(`mentions:${target}`); // 站内消息（@提醒）一并清理
     return json({ ok: true });
@@ -2752,8 +2752,8 @@ async function handleApi(request, env, pathname) {
   //                             且订单号与「自产单 / 外购单」标签可点击）
   //     canViewAllOrders        新权限「是否可查看全部订单」（普通成员，**默认「是」**）：
   //                             = 是 → 可见本团队全部订单（他人录入的订单为只读，可添加备注）；
-  //                             = 否 → 只能查看 自己录入的订单 + 「可查看订单客户列表」中客户的订单
-  //                             （「可查看订单客户列表」由团队管理员通过 /api/view-customers/ 维护；
+  //                             = 否 → 只能查看 自己录入的订单 + 「可查看客户清单」中客户的订单
+  //                             （「可查看客户清单」由团队管理员通过 /api/view-customers/ 维护；
   //                              该列表为空时只能查看自己录入的订单）
   //     canPlaceMaskedOrder     权限6「是否可以下脱敏订单」（普通成员**默认「否」**）：
   //                             = 是 → 可在订单列表中点击订单号右侧灰色的「回形针」图标
@@ -2982,10 +2982,11 @@ async function handleApi(request, env, pathname) {
   }
 
 
-  // ---- 「可查看订单客户列表」（「是否可查看全部订单」= 否 的普通成员；仅团队管理员可维护）----
-  // 作用：加入该清单的客户的订单位显示在该成员的订单列表中；清单为空 → 该成员只能查看自己录入的订单。
+  // ---- 「可查看客户清单」（「是否可查看全部订单」= 否 的普通成员；仅团队管理员可维护）----
+  // 作用：**在此清单中添加客户 = 授权**把这些客户的订单显示在该成员的订单列表中
+  //（本团队、含待确认、只读但可追加备注）；清单为空 → 该成员只能查看自己录入的订单。
   // 与「可录入订单客户列表」（/api/customers/<用户名>，决定能否录入订单）相互独立。
-  // 获取某成员的「可查看订单客户列表」（团队管理员可读任意本团队成员；成员可读自己的）
+  // 获取某成员的「可查看客户清单」（团队管理员可读任意本团队成员；成员可读自己的）
   if (pathname.startsWith("/api/view-customers/") && method === "GET") {
     const user = await getCurrentUser(request, env);
     if (!user) return json({ error: "未登录" }, 401);
@@ -2999,7 +3000,7 @@ async function handleApi(request, env, pathname) {
     return json({ customers: await getViewCustomers(env, target) });
   }
 
-  // 为某成员的「可查看订单客户列表」新增客户（仅团队管理员）
+  // 为某成员的「可查看客户清单」新增客户（仅团队管理员）
   if (pathname.startsWith("/api/view-customers/") && method === "POST") {
     const user = await getCurrentUser(request, env);
     if (!user) return json({ error: "未登录" }, 401);
@@ -3013,7 +3014,7 @@ async function handleApi(request, env, pathname) {
     const gid = globalId ? String(globalId).trim() : "";
     const list = await getViewCustomers(env, target);
     if (list.some((c) => c.name === trimmed || (gid && c.id === gid))) {
-      return json({ error: "该客户已在「可查看订单客户列表」中" }, 400);
+      return json({ error: "该客户已在「可查看客户清单」中" }, 400);
     }
     const customer = {
       id: gid || genToken().slice(0, 12),
@@ -3025,7 +3026,7 @@ async function handleApi(request, env, pathname) {
     return json({ ok: true, customer });
   }
 
-  // 从某成员的「可查看订单客户列表」中移除客户（仅团队管理员）
+  // 从某成员的「可查看客户清单」中移除客户（仅团队管理员）
   if (pathname.startsWith("/api/view-customers/") && method === "DELETE") {
     const user = await getCurrentUser(request, env);
     if (!user) return json({ error: "未登录" }, 401);
@@ -3460,10 +3461,10 @@ async function handleApi(request, env, pathname) {
     //   · 否：只返回**自己的订单**（可正常编辑 / 删除），并携带 owner（清单里每条订单都显示录入者）。
     // 注：「可录入订单客户列表」只决定权限1「添加订单」是否生效（有客户才显示录入区），与可见范围无关。
     if (isMemberRole(user.role) && !canViewAllTeamOrders(user)) {
-      // 「是否可查看全部订单」= 否：只能查看 ① 自己录入的订单 + ②「可查看订单客户列表」中客户的订单：
+      // 「是否可查看全部订单」= 否：只能查看 ① 自己录入的订单 + ②「可查看客户清单」中客户的订单：
       //   · 自己的订单可正常编辑 / 删除；
       //   · ②的订单为**只读**（不能改状态 / 不能删除），但可追加备注（viewOnly 标记）；
-      //   · 「可查看订单客户列表」为空 → 只能查看自己录入的订单（与历史行为一致）。
+      //   · 「可查看客户清单」为空 → 只能查看自己录入的订单（与历史行为一致）。
       const own = await getTodos(env, user.username);
       const mine = own.map((t) => Object.assign({}, t, { owner: user.username }));
       const names = await viewCustomerNamesOf(env, user);
@@ -3615,7 +3616,7 @@ async function handleApi(request, env, pathname) {
     //   （及权限5 = 有 的成员），以及「是否可查看全部订单」= 是（默认）的普通成员
     //   （其订单列表显示本团队全部订单：只读但可追加备注）；
     // 「是否可查看全部订单」= 否 的普通成员：仅能对 ①自己的待办 与
-    //   ②「可查看订单客户列表」中客户（即其清单里可见）的订单添加备注。
+    //   ②「可查看客户清单」中客户（即其清单里可见）的订单添加备注。
     let owner = user.username;
     if (canNoteOthersTodos(user)) {
       const requested = body.owner || user.username;
@@ -3626,7 +3627,7 @@ async function handleApi(request, env, pathname) {
       }
       owner = requested;
     } else if (body.owner && body.owner !== user.username) {
-      // 普通成员（「是否可查看全部订单」= 否）：其清单里通过「可查看订单客户列表」可见的他人订单也允许追加备注
+      // 普通成员（「是否可查看全部订单」= 否）：其清单里通过「可查看客户清单」可见的他人订单也允许追加备注
       const allowed = await canNoteVisibleOrderForMember(env, user, body.owner, id);
       if (!allowed) return json({ error: "无权操作该用户的待办" }, 403);
       owner = body.owner;

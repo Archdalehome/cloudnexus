@@ -1549,9 +1549,15 @@ ${commonStyle}
   }
   .customer-chip-del:hover { opacity: 1; }
   .customer-empty { font-size: 12px; color: #c9c9c5; }
-  /* 「可查看订单客户列表」（「是否可查看全部订单」= 否 的成员）：与「可录入订单客户列表」区分显示 */
+  /* 「可查看客户清单」（「是否可查看全部订单」= 否 的成员）：与「可录入订单客户列表」区分显示 */
   .customer-manage.view-customer-manage { background: #fbfbfa; }
   .customer-manage.view-customer-manage .customer-manage-title { color: #6b6b68; }
+  .customer-manage-hint {
+    font-size: 12px;
+    color: #9b9a97;
+    line-height: 1.6;
+    margin-bottom: 8px;
+  }
   .customer-chip.view-chip { background: #f1f1ef; color: #6b6b68; }
   .customer-chip.view-chip .customer-chip-del { color: #6b6b68; }
   .customer-add-row { display: flex; gap: 8px; }
@@ -1840,7 +1846,7 @@ ${adBlock}
         <input type="text" id="newUserName" placeholder="用户名" style="margin-bottom:8px">
         <input type="password" id="newUserPwd" placeholder="密码" style="margin-bottom:8px">
         <input type="text" id="newUserPosition" placeholder="职位（手动输入，如：业务员 / 采购 / 主管）" maxlength="20" style="width:100%;padding:9px 12px;border:1px solid #e0e0dc;border-radius:6px;font-size:14px;background:#fff;color:#37352f;outline:none">
-        <div class="order-perm-hint" style="margin-top:6px">新增成员统一为普通成员：权限1「添加订单」自动（在下方「可录入订单客户列表」中分配客户后即可录入订单）；「是否可查看全部订单」（**默认「是」**：可查看本团队全部订单；设为「否」时该成员只能查看自己录入的订单 + 下方「可查看订单客户列表」中客户的订单，该列表为空则只能看自己的）/ 权限2「查看客户订单」/ 权限3「下生产订单」/ 权限4「查看生产订单」/ 权限5「更新订单状态」（= 是 时订单列表与团队管理员相同）/ 权限6「下脱敏订单」（= 是 时可点击订单号右侧的「回形针」补填脱敏订单文件链接，**默认「无」**）/ 权限7「添加出货日期」（= 是 时可点击「交期」右侧的灰色空白区块添加出货日期，**默认「无」**）在下方成员列表中逐个设置</div>
+        <div class="order-perm-hint" style="margin-top:6px">新增成员统一为普通成员：权限1「添加订单」自动（在下方「可录入订单客户列表」中分配客户后即可录入订单）；「是否可查看全部订单」（**默认「是」**：可查看本团队全部订单；设为「否」时该成员只能查看自己录入的订单 + 可在下方「可查看客户清单」中授权显示相应客户的订单，清单为空则只能看自己的）/ 权限2「查看客户订单」/ 权限3「下生产订单」/ 权限4「查看生产订单」/ 权限5「更新订单状态」（= 是 时订单列表与团队管理员相同）/ 权限6「下脱敏订单」（= 是 时可点击订单号右侧的「回形针」补填脱敏订单文件链接，**默认「无」**）/ 权限7「添加出货日期」（= 是 时可点击「交期」右侧的灰色空白区块添加出货日期，**默认「无」**）在下方成员列表中逐个设置</div>
       </div>
       <button class="btn-primary-sm" id="btnAddUser" style="width:100%">添加成员</button>
       <div class="msg" id="userMsg"></div>
@@ -2728,7 +2734,7 @@ ${adBlock}
     //   观察类角色、待办管理者、订单本人，以及「是否可查看全部订单」= 是（默认）的普通成员
     //  （这类成员的清单里会显示本团队全部订单：只读，但可为他人的订单添加备注）
     const canAddNote = isObserver || isTodoManager || isOwnOrder || canViewAllOrders ||
-      !!t.viewOnly; // viewOnly = 通过「可查看订单客户列表」可见的他人订单（只读但可追加备注）
+      !!t.viewOnly; // viewOnly = 通过「可查看客户清单」可见的他人订单（只读但可追加备注）
     const canDelete = !isObserver && st === 'pending' && (isTodoManager || isOwnOrder);
 
     const delBtn = canDelete
@@ -3809,8 +3815,9 @@ ${adBlock}
   });
 
   // ---------- 成员管理 ----------
-  // 「可查看订单客户列表」（「是否可查看全部订单」= 否 的成员显示）：
-  //   加入该清单的客户的订单才显示在该成员的订单列表中；清单为空 → 该成员只能查看自己录入的订单。
+  // 「可查看客户清单」（「是否可查看全部订单」= 否 的成员显示）：
+  //   在此清单中添加客户 = **授权**把这些客户的订单显示在该成员的订单列表中
+  //   （只读、可加备注）；清单为空 → 该成员只能查看自己录入的订单。
   //   客户来源与「可录入订单客户列表」相同（「客户管理」维护的团队客户列表），两者互不影响。
   function buildViewCustomerBlock(u, customerList, viewCustomers) {
     const assignedIds = viewCustomers.map(function (c) { return c.id; });
@@ -3818,9 +3825,9 @@ ${adBlock}
       ? viewCustomers.map(function (c) {
           return '<span class="customer-chip view-chip">' + esc(c.name) +
             '<span class="customer-chip-del" data-delviewcustomer="' + esc(u.username) +
-            '" data-vcid="' + esc(c.id) + '" title="从「可查看订单客户列表」中移除">×</span></span>';
+            '" data-vcid="' + esc(c.id) + '" title="取消授权：从「可查看客户清单」中移除该客户">×</span></span>';
         }).join('')
-      : '<span class="customer-empty">暂无客户（该成员只能查看自己录入的订单）</span>';
+      : '<span class="customer-empty">暂无客户（未授权：该成员只能查看自己录入的订单）</span>';
     const available = customerList.filter(function (c) { return assignedIds.indexOf(c.id) === -1; });
     const addRow = available.length
       ? '<select class="customer-add-select"><option value="">选择客户</option>' +
@@ -3834,7 +3841,9 @@ ${adBlock}
         '</div>';
     return '<div class="customer-manage view-customer-manage" data-view-customer-manage="' +
       esc(u.username) + '">' +
-      '<div class="customer-manage-title">可查看订单客户列表</div>' +
+      '<div class="customer-manage-title">可查看客户清单</div>' +
+      '<div class="customer-manage-hint">在此清单中添加客户 = 授权把该客户的订单显示在该成员的订单列表中' +
+      '（只读、可加备注）；清单为空时该成员只能查看自己录入的订单。</div>' +
       '<div class="customer-list">' + chips + '</div>' +
       '<div class="customer-add-row">' + addRow + '</div>' +
       '</div>';
@@ -3869,7 +3878,7 @@ ${adBlock}
           customerMap[u.username] = [];
         }
       }));
-      // 「可查看订单客户列表」（仅「是否可查看全部订单」= 否 的普通成员需要）
+      // 「可查看客户清单」（仅「是否可查看全部订单」= 否 的普通成员需要）
       const viewCustomerMap = {};
       await Promise.all(data.users.map(async (u) => {
         if (!isMember(u) || u.canViewAllOrders !== false) return;
@@ -3920,7 +3929,7 @@ ${adBlock}
             <div class="customer-list">\${chips}</div>
             <div class="customer-add-row">\${addRow}</div>
           </div>\`;
-          // 「是否可查看全部订单」= 否 的成员：同一区块下方再显示「可查看订单客户列表」——
+          // 「是否可查看全部订单」= 否 的成员：同一区块下方再显示「可查看客户清单」——
           //   加入该清单的客户的订单才显示在该成员的订单列表中；清单为空 → 只能查看自己录入的订单。
           if (u.canViewAllOrders === false) {
             customerBlock += buildViewCustomerBlock(
@@ -3966,8 +3975,9 @@ ${adBlock}
               permToggle('data-canviewallorders', '是否可查看全部订单', u.canViewAllOrders !== false, '是', '否',
                 '「是否可查看全部订单」= 是（默认）时该成员可查看本团队全部订单（含待确认）：' +
                 '他人录入的订单在其清单里为只读（不能改状态 / 不能删除），但可添加备注；' +
-                '= 否 时该成员只能查看 ①自己录入的订单 与 ②下方「可查看订单客户列表」中客户的订单' +
-                '（该列表为空时只能查看自己录入的订单）') +
+                '= 否 时该成员只能查看 ①自己录入的订单 与 ②下方「可查看客户清单」中客户的订单' +
+                '（在该清单中添加客户 = 授权把这些客户的订单显示在该成员的订单列表中；' +
+                '清单为空时该成员只能查看自己录入的订单）') +
               permToggle('data-canvieworder', '是否可以查看客户订单', u.canViewCustomerOrder === true, '是', '否') +
               permToggle('data-canpurchase', '是否可以下生产订单', u.canPurchase === true, '是', '否') +
               permToggle('data-canviewpurchase', '是否可以查看生产订单', u.canViewPurchaseOrder === true, '是', '否') +
@@ -4135,8 +4145,8 @@ ${adBlock}
           } catch (err) { alert(err.message); }
         });
       });
-      // 「可查看订单客户列表」：添加 / 移除客户
-      // （加入该清单的客户的订单才显示在该成员的订单列表中；清单为空 → 只能查看自己录入的订单）
+      // 「可查看客户清单」：添加 / 移除客户（在此清单中添加客户 = 授权把该客户的订单
+      // 显示在该成员的订单列表中；清单为空 → 该成员只能查看自己录入的订单）
       list.querySelectorAll('[data-addviewcustomer]').forEach(el => {
         el.addEventListener('click', async () => {
           const name = el.getAttribute('data-addviewcustomer');
@@ -4160,7 +4170,7 @@ ${adBlock}
         el.addEventListener('click', async () => {
           const uname = el.getAttribute('data-delviewcustomer');
           const cid = el.getAttribute('data-vcid');
-          if (!confirm('确定从「可查看订单客户列表」中移除该客户吗？该客户的订单将不再显示在该成员的订单列表中。')) return;
+          if (!confirm('确定取消授权（从「可查看客户清单」中移除该客户）吗？移除后该客户的订单将不再显示在该成员的订单列表中。')) return;
           try {
             await api('/api/view-customers/' + encodeURIComponent(uname) + '/' + encodeURIComponent(cid), { method: 'DELETE' });
             await loadUsers();
