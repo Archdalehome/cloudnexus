@@ -98,7 +98,8 @@ const LOGIN_REGISTER_CARD = `
     </form>
     <div class="hint">提交后系统会向上面填写的邮箱发送 <b>6 位邮箱确认码</b>（10 分钟内有效）。</div>
     <div class="hint">在登录页输入确认码完成邮箱确认后，即可正常登录（注册成功即成为该团队的「管理员」：试用期无限期）。</div>
-    <div class="hint">试用版功能与专业版基本相同（可添加订单 / 成员 / 生产方 / 客户并维护订单状态），仅数量受限：成员 2 个、生产方 1 个、客户 1 个，且页面顶部会显示广告位。</div>
+    <div class="hint">试用版功能与专业版基本相同（可管理成员 / 生产方 / 客户、维护订单状态），仅数量受限：成员 2 个、生产方 1 个、客户 1 个，且页面顶部会显示广告位。</div>
+    <div class="hint">与专业版一致：<b>团队账号本人不录入订单</b> —— 请先在「成员管理」中添加成员、在「可录入订单客户列表」中为其分配客户，再由成员登录录入订单。</div>
     <div class="hint">点击顶栏「订阅」升级为专业用户后：数量限制解除、广告位移除。</div>
     <div class="switch-row">
       <button type="button" class="link-btn" id="btnGoLogin">返回登录</button>
@@ -279,8 +280,8 @@ ${commonStyle}
 
     <form id="loginForm">
       <div class="field field-inline">
-        <label>用户名</label>
-        <input type="text" id="username" autocomplete="username" placeholder="请输入用户名" required>
+        <label>帐号</label>
+        <input type="text" id="username" autocomplete="username" placeholder="请输入帐号" required>
       </div>
       <div class="field field-inline">
         <label>密码</label>
@@ -579,7 +580,7 @@ ${canRegister ? LOGIN_REGISTER_CARD : ""}
         );
         return;
       }
-      alert('注册成功！已为「' + (data.teamName || teamName) + '」开通无限期试用账号（可添加订单与成员 / 生产方 / 客户，数量有限：成员 2 个、生产方 1 个、客户 1 个）。');
+      alert('注册成功！已为「' + (data.teamName || teamName) + '」开通无限期试用账号（与专业版一致：团队账号本人不录入订单，请在「成员管理」中添加成员并分配客户，由成员录入订单；成员 2 个 / 生产方 1 个 / 客户 1 个）。');
       location.href = '/todos';
     } catch (err) {
       regErr.textContent = '无法连接服务器：请确认服务已启动（本地调试先运行 npm run dev），并检查访问地址';
@@ -741,8 +742,6 @@ ${commonStyle}
   }
   /* 订单号输入框：132px（= 原 88px 加长 50%）；试用版与专业版一致 */
   .add-row input.title-input { flex: 0 1 132px; }
-  /* 试用版新增订单行（客户名称手工输入）：客户输入框缩 20%（180px → 144px） */
-  .add-row.trial-row .customer-input { flex: 0 1 144px; }
   /* 订单文件链接输入框：占更宽一些 */
   .add-row input.url-input { flex: 2 1 240px; }
   /* 币种下拉（美元 / 人民币）：位于交期与金额之间 */
@@ -1722,7 +1721,6 @@ ${commonStyle}
     .add-row input.url-input { flex: 1 1 100%; }
     .add-row .currency-select { flex: 0 0 42%; max-width: 42%; }
     .add-row .amount-input { flex: 1 1 auto; max-width: none; }
-    .add-row.trial-row .customer-input { flex: 1 1 100%; max-width: 100%; }
     .add-row .btn-add { flex: 1 1 100%; padding: 12px 18px; }
 
     /* 订单行：留白与展开区缩进收紧，把宽度留给 PO# 与标签 */
@@ -2285,9 +2283,6 @@ ${adBlock}
     showAllUsers = isTodoManager || isObserver;
     document.getElementById('currentUser').textContent = currentUser.username;
 
-    // 客户输入框：试用团队账号把「客户下拉」换成「客户名称输入框」（后端自动记入客户列表）
-    setupCustomerInput();
-
     if (isTeamAdmin) {
       // 「团队设置」（团队名称）对团队账号（含试用）开放
       document.getElementById('btnSettings').style.display = '';
@@ -2391,26 +2386,10 @@ ${adBlock}
     btn.style.display = '';
   }
 
-  // 客户输入框：
-  //   · 试用团队账号（未订阅）：「客户名称」改为手工填写（后端放行并自动记入客户列表）；
-  //   · 其他角色：保持原有「客户下拉」（业务部为自己被分配的客户；专业版团队账号为团队客户列表）。
-  function setupCustomerInput() {
-    if (!isTrialTeam) return;
-    const sel = document.getElementById('newCustomer');
-    if (!sel || sel.tagName !== 'SELECT') return;
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.id = 'newCustomer';
-    input.className = 'customer-input';
-    input.maxLength = 60;
-    input.placeholder = '客户(手动输入)';
-    input.title = '试用账号可直接填写客户名称，系统会自动记入客户列表；订阅后可在「客户管理」中维护';
-    sel.replaceWith(input);
-    // 试用版标记：「客户」手工输入框按试用版尺寸显示（缩 20%）
-    // （见样式 .add-row.trial-row，不影响专业版）
-    const addRow = input.closest('.add-row');
-    if (addRow) addRow.classList.add('trial-row');
-  }
+  // 客户输入框（仅团队成员录单时需要）：
+  //   业务部等成员为「客户下拉」——选项即其「可录入订单客户列表」中自己被分配的客户；
+  //   团队账号本人（团队管理员）固定不录入订单（试用版与专业版一致），因此录入区整体不显示，
+  //   此处不再做任何替换。
 
   // 距到期天数（向上取整；已过期返回负数）
   function daysLeft(iso) {
@@ -3337,13 +3316,12 @@ ${adBlock}
   }
 
   // ---------- 加载当前用户的客户列表 ----------
-  //   · 试用团队账号：客户名称手工填写（后端自动记入客户列表），无需加载下拉框；
-  //   · 专业版团队账号：客户取自「客户管理」中的团队客户列表；
-  //   · 其他成员（业务部等）：为自己被分配的客户。
+  //   · 团队账号本人（团队管理员）：不录入订单（试用版与专业版一致），录入区不显示，无需加载；
+  //   · 其他成员（业务部等）：为自己被分配的客户（「可录入订单客户列表」）。
   async function loadCustomers() {
     // 「生产单下单权限」为「无」的成员不录入订单，无需加载客户下拉
     if (!currentUser.canPlaceOrder) return;
-    if (isTrialTeam) return;
+    if (isTrialTeam) return; // 试用版团队账号同样不录入订单
     try {
       const url = isTeamAdmin
         ? '/api/customer-list'
@@ -3377,7 +3355,7 @@ ${adBlock}
     const amount = amountInput.value;
     const orderUrl = urlInput.value.trim();
     const currency = currencyEl ? currencyEl.value : 'USD';
-    if (!customer) { alert(isTrialTeam ? '请输入客户' : '请选择客户'); return; }
+    if (!customer) { alert('请选择客户'); return; }
     if (!title) { alert('请输入主题'); return; }
     if (!dueDate) { alert('请选择交期'); return; }
     if (amount === '' || amount === null) { alert('请输入金额'); return; }

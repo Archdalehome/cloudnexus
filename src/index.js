@@ -13,12 +13,14 @@ import { connect } from "cloudflare:sockets";
 //   ③ 邮箱确认后账号即为「试用团队账号」：试用期无期限（不会到期，也不会因此被阻止登录）；
 //   ④ 试用版功能与专业版**基本相同**（成员管理 / 生产方管理 / 客户管理、订单状态流转等都可使用），
 //      仅保留数量限制：成员最多 2 个、生产方最多 1 个、客户最多 1 个；此外页面顶部会显示「广告位」
-//      （广告代码由超级管理员在控制台「系统设置」中维护）。试用期添加订单时，客户名称仍可直接
-//      手工填写，系统自动记入客户列表（客户数量达上限后不再记入团队客户列表，订阅后可补齐）；
+//      （广告代码由超级管理员在控制台「系统设置」中维护）。
+//      **试用版与专业版一致：团队账号本人不录入订单**（订单由团队成员录入 —— 先在「成员管理」中
+//      添加成员、在「可录入订单客户列表」中为其分配客户，再由成员登录录单）；
 //   ⑤ 点击顶栏「订阅」选择套餐并提交「订阅申请」，由超级管理员开通后即成为「专业版」：
 //      **数量限制解除、广告位不再显示**，并可继续使用系统全部功能；
 //      订阅时限与价格与原来保持一致。
-//   专业版订阅到期后自动回落为「试用（受限）」状态：仍可登录、可添加订单，再次「订阅」即可恢复。
+//   专业版订阅到期后自动回落为「试用（受限）」状态：仍可登录、功能与专业版基本相同（仅数量受限 + 广告位），
+//   再次「订阅」即可恢复。
 //   注：升级前已注册的团队账号（没有 emailVerified 字段）视为「已确认」，可直接登录。
 // 其他角色（superviewer / editor / viewer / restricted / producer / customer）
 //   均由专业版团队管理员在本团队内创建，数据按 teamId 隔离，互不可见。
@@ -1267,37 +1269,6 @@ async function saveCustomerList(env, teamId, list) {
   await env.TODO_KV.put(key, JSON.stringify(list));
 }
 
-// 试用团队账号添加订单时手工填写的客户名称：自动记入「本人客户列表」与「团队客户列表」，
-// 便于订阅为专业版后在「客户管理」中看到并分配给成员（不会自动创建客户登录账号）
-// 注：试用版「客户管理」最多 1 个客户（TRIAL_LIMIT.customers）—— 已满时不再自动记入团队客户列表
-//     （本人的客户列表照常记录，用于订单校验），订阅后可在「客户管理」中补齐。
-async function rememberTrialCustomer(env, user, name) {
-  const trimmed = String(name || "").trim();
-  if (!trimmed) return;
-  const own = await getCustomers(env, user.username);
-  if (!own.some((c) => c.name === trimmed)) {
-    own.push({
-      id: genToken().slice(0, 12),
-      name: trimmed,
-      createdAt: new Date().toISOString(),
-    });
-    await saveCustomers(env, user.username, own);
-  }
-  const teamId = teamIdOf(user);
-  const list = await getCustomerList(env, teamId);
-  const already = list.some((c) => c.name === trimmed);
-  if (!already && list.length >= TRIAL_LIMIT.customers) return; // 试用版已达客户数量上限
-  if (!already) {
-    list.push({
-      id: genToken().slice(0, 12),
-      name: trimmed,
-      description: "",
-      createdAt: new Date().toISOString(),
-    });
-    await saveCustomerList(env, teamId, list);
-  }
-}
-
 // 生产方性质：self=自产（默认）/ purchased=外购
 // 历史数据没有该字段时统一按「自产」处理（生产方列表里可直接切换）
 const PRODUCER_NATURES = ["self", "purchased"];
@@ -1534,18 +1505,16 @@ async function hasAssignedCustomers(env, username) {
 }
 
 // 权限1「添加订单」是否已生效（异步：需要读取该成员已分配的客户列表）：
-//   · 团队管理员本人（团队账号）：
-//       - **专业版**：**不再录入订单** —— 登录后订单列表上方不显示「添加新订单」录入区，
-//         接口（POST /api/todos）同样拦截；订单由团队成员录入；
-//       - **试用账号**（未订阅 / 订阅已到期）：保留录单能力（客户名称手工填写，自动记入客户
-//         列表）—— 试用期没有「成员管理」，否则注册后将无任何业务可用；
+//   · 团队管理员本人（团队账号）：**任何状态都不录入订单**（试用版与专业版一致）——
+//     登录后订单列表上方不显示「添加新订单」录入区，接口（POST /api/todos）同样拦截；
+//     订单由团队成员录入（团队账号负责成员 / 生产方 / 客户管理与待办流转）；
 //   · 普通成员（原业务部）：**已分配客户即可添加订单** —— 有客户时登录后订单列表上方显示
 //     「添加新订单」录入区；没有客户则默认无添加订单功能；
 //   · 其他历史角色（业务主管 / 生产部 / 部门主管 / 总经理等）按 canPlaceOrder 的历史规则。
 async function canAddOrderNow(env, user) {
   if (!user) return false;
-  // 团队管理员本人（团队账号）：专业版不录入订单（由成员录入）；试用账号保留录单能力
-  if (isTeamAdmin(user.role)) return !isProTeam(user);
+  // 团队管理员本人（团队账号）：不录入订单（试用版与专业版逻辑相同，订单一律由成员录入）
+  if (isTeamAdmin(user.role)) return false;
   if (isMemberRole(user.role)) return hasAssignedCustomers(env, user.username);
   return canPlaceOrder(user);
 }
@@ -1882,7 +1851,8 @@ async function handleApi(request, env, pathname) {
     const now = new Date();
     // 团队用户（团队管理员）：teamId 即自己的用户名，其他成员/生产方/客户都归属该团队
     // 试用期无期限：不写入到期时间（trialEndsAt / expiresAt 均为空）；
-    // 试用期间仅限本人使用（无成员 / 生产方 / 客户管理功能），可添加订单
+    // 试用版功能与专业版基本相同（成员 / 生产方 / 客户管理都可用，仅数量受限），
+    // 且与专业版一致 —— **团队账号本人不录入订单**（订单由成员录入）
     const teamUser = {
       username: uname,
       password: await hashPassword(pwd),
@@ -3557,15 +3527,16 @@ async function handleApi(request, env, pathname) {
   if (pathname === "/api/todos" && method === "POST") {
     const user = await getCurrentUser(request, env);
     if (!user) return json({ error: "未登录" }, 401);
-    // 权限1「添加订单」：普通成员（原业务部）**已分配客户即可添加订单**（无客户则默认无添加订单
-    // 功能）；**专业版**团队管理员本人（团队账号）不录入订单（订单由成员录入；试用账号仍可录入）；
+    // 权限1「添加订单」：普通成员（原业务部）**已分配客户即可添加订单**（无客户则默认无添加订单功能）；
+    // **团队管理员本人（团队账号）不录入订单**（试用版与专业版一致，订单由成员录入）；
     // 历史「部门主管 / 总经理」固定不录入订单
     if (!(await canAddOrderNow(env, user))) {
       if (isTeamAdmin(user.role)) {
         return json(
           {
             error:
-              "专业版团队账号不录入订单：请在「成员管理」中添加成员，由成员登录后录入订单",
+              "团队账号不录入订单（试用版与专业版一致）：请在「成员管理」中添加成员、" +
+              "在「可录入订单客户列表」中为其分配客户后，由成员登录录入订单",
           },
           403
         );
@@ -3612,24 +3583,11 @@ async function handleApi(request, env, pathname) {
     if (Number.isNaN(amountNum) || amountNum < 0) {
       return json({ error: "金额必须为非负数字" }, 400);
     }
-    // 客户校验：
-    //   ① 试用团队账号（未订阅，仅本人使用、无「客户管理」功能）：客户名称直接手工填写，
-    //      放行并自动记入本人客户列表与团队客户列表（订阅后可在「客户管理」中看到）；
-    //   ② 专业版团队管理员：从团队客户列表（或本人已分配客户）中选择；
-    //   ③ 其他角色（业务部等）：必须在其被分配的客户列表中。
+    // 客户校验：订单由**团队成员**录入，按其被分配的客户列表校验：
+    //   ① 团队账号本人（团队管理员）：不录入订单（上方已拦截）；
+    //   ② 普通成员（原业务部等）：必须在其「可录入订单客户列表」（被分配的客户）中。
     const cname = customer.trim();
-    if (isTeamAdmin(user.role) && !isProTeam(user)) {
-      await rememberTrialCustomer(env, user, cname);
-    } else if (isTeamAdmin(user.role)) {
-      const teamCustomers = await getCustomerList(env, teamIdOf(user));
-      const ownCustomers = await getCustomers(env, user.username);
-      if (
-        !teamCustomers.some((c) => c.name === cname) &&
-        !ownCustomers.some((c) => c.name === cname)
-      ) {
-        return json({ error: "客户不存在，请先在「客户管理」中添加" }, 400);
-      }
-    } else {
+    {
       const customers = await getCustomers(env, user.username);
       if (!customers.some((c) => c.name === cname)) {
         return json({ error: "客户不存在，请联系管理员添加" }, 400);
