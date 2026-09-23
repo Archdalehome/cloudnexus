@@ -97,8 +97,9 @@ const LOGIN_REGISTER_CARD = `
       <div class="error" id="regError"></div>
     </form>
     <div class="hint">提交后系统会向上面填写的邮箱发送 <b>6 位邮箱确认码</b>（10 分钟内有效）。</div>
-    <div class="hint">在登录页输入确认码完成邮箱确认后，即可正常登录（注册成功即成为该团队的「管理员」：试用期无限期、仅限本人使用）。</div>
-    <div class="hint">需要使用成员 / 生产方 / 客户管理等功能时，可点击顶栏「订阅」升级为专业用户。</div>
+    <div class="hint">在登录页输入确认码完成邮箱确认后，即可正常登录（注册成功即成为该团队的「管理员」：试用期无限期）。</div>
+    <div class="hint">试用版功能与专业版基本相同（可添加订单 / 成员 / 生产方 / 客户并维护订单状态），仅数量受限：成员 2 个、生产方 1 个、客户 1 个，且页面顶部会显示广告位。</div>
+    <div class="hint">点击顶栏「订阅」升级为专业用户后：数量限制解除、广告位移除。</div>
     <div class="switch-row">
       <button type="button" class="link-btn" id="btnGoLogin">返回登录</button>
     </div>
@@ -578,7 +579,7 @@ ${canRegister ? LOGIN_REGISTER_CARD : ""}
         );
         return;
       }
-      alert('注册成功！已为「' + (data.teamName || teamName) + '」开通无限期试用账号（仅限本人使用，可添加订单）。');
+      alert('注册成功！已为「' + (data.teamName || teamName) + '」开通无限期试用账号（可添加订单与成员 / 生产方 / 客户，数量有限：成员 2 个、生产方 1 个、客户 1 个）。');
       location.href = '/todos';
     } catch (err) {
       regErr.textContent = '无法连接服务器：请确认服务已启动（本地调试先运行 npm run dev），并检查访问地址';
@@ -597,11 +598,21 @@ ${canRegister ? LOGIN_REGISTER_CARD : ""}
 //   false 时直接把录入区渲染为 display:none，避免登录瞬间的闪现；undefined/未传则按显示处理）
 // siteName：左上角显示的名称（所属团队名 / 全局网站名），同样由服务端渲染 ——
 //   避免首屏先闪一下「订单管理系统」再变成团队名
-export function todoPage(favicon, canPlaceOrder, siteName) {
+// adCode：试用版（未订阅 / 订阅已到期）页面顶部「广告位」的广告代码（HTML 片段），
+//   由超级管理员在控制台「系统设置」中维护；服务端仅在非专业版团队下传入（专业版传空串）。
+export function todoPage(favicon, canPlaceOrder, siteName, adCode) {
   // 省略参数时按「显示」处理（与历史行为一致）；显式 false 才隐藏
   const addRowHidden = canPlaceOrder === false;
   const pageName = String(siteName === undefined || siteName === null ? '' : siteName).trim() ||
     '订单管理系统';
+  // 广告位（试用版）：为空则不输出该区块（专业版团队 / 未配置广告代码时都不显示）
+  const ad = String(adCode === undefined || adCode === null ? '' : adCode).trim();
+  const adBlock = ad
+    ? `
+  <!-- 广告位（试用版）：广告代码由超级管理员在控制台「系统设置」中维护；订阅专业版后不再显示 -->
+  <div class="ad-slot" id="adSlot">${ad}</div>
+`
+    : '';
   return `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -703,6 +714,19 @@ ${commonStyle}
     margin: 0 auto;
     padding: 28px 20px 80px;
   }
+  /* 试用版广告位（页面顶部；广告代码由超级管理员在「系统设置」中维护，订阅专业版后不再输出） */
+  .ad-slot {
+    max-width: 720px;
+    margin: 14px auto 0;
+    padding: 0 20px;
+    text-align: center;
+    font-size: 13px;
+    color: #6b6b68;
+    line-height: 1.6;
+  }
+  .ad-slot img { max-width: 100%; height: auto; }
+  .ad-slot a { color: #2383e2; }
+  .ad-slot iframe { max-width: 100%; border: 0; }
   .add-row {
     display: flex;
     flex-wrap: wrap;
@@ -819,6 +843,8 @@ ${commonStyle}
   .todo-due.due-overdue { background: #fdeceb; color: #eb5757; }
   .todo-due.due-soon { background: #fdf0e3; color: #d9730d; }
   .todo-due.due-far { background: #e6f4ee; color: #0f7b6c; }
+  /* 交期的完整日期（yyyy-mm-dd，宽屏显示）/ 短日期（月/日，手机等窄屏显示，保证一行不换行） */
+  .todo-due .due-short { display: none; }
   /* 可点击修改的交期 / 金额（管理员 + 待确认） */
   .todo-due.editable, .todo-amount.editable {
     cursor: pointer;
@@ -1523,6 +1549,11 @@ ${commonStyle}
   }
   .customer-chip-del:hover { opacity: 1; }
   .customer-empty { font-size: 12px; color: #c9c9c5; }
+  /* 「可查看订单客户列表」（「是否可查看全部订单」= 否 的成员）：与「可录入订单客户列表」区分显示 */
+  .customer-manage.view-customer-manage { background: #fbfbfa; }
+  .customer-manage.view-customer-manage .customer-manage-title { color: #6b6b68; }
+  .customer-chip.view-chip { background: #f1f1ef; color: #6b6b68; }
+  .customer-chip.view-chip .customer-chip-del { color: #6b6b68; }
   .customer-add-row { display: flex; gap: 8px; }
   .customer-add-input {
     flex: 1;
@@ -1612,6 +1643,17 @@ ${commonStyle}
 
   .msg.ok { color: #0f7b6c; }
   .msg.err { color: #eb5757; }
+  /* 试用版数量限制提示（成员 / 生产方 / 客户）：订阅专业版后可解除限制 */
+  .trial-limit-hint {
+    font-size: 12px;
+    line-height: 1.7;
+    color: #d9730d;
+    background: #fdf0e3;
+    border-radius: 6px;
+    padding: 8px 10px;
+    margin-bottom: 12px;
+  }
+  .trial-limit-hint.full { color: #eb5757; background: #fdecec; }
   .divider { height: 1px; background: #ebebe8; margin: 20px 0; }
   /* 一个待办固定一行：宽度不足时按优先级隐藏次要信息，保证 PO#（标题）与生产方始终可见。
      注：@container 规则必须放在本页样式的最末尾，否则会被上面同优先级的 .todo-* 规则覆盖 */
@@ -1631,8 +1673,11 @@ ${commonStyle}
   @container (max-width: 470px) {
     .todo-ship { display: none; }
   }
-  @container (max-width: 450px) {
-    .todo-due { display: none; }
+  /* 交期（.todo-due）在窄屏**始终显示**（不再隐藏，避免手机上完全看不到交期）：
+     位置不够时改为只显示「月/日」（不显示年份），容器宽度同一行放得下，不会换行。 */
+  @container (max-width: 520px) {
+    .todo-due .due-full { display: none; }
+    .todo-due .due-short { display: inline; }
   }
   /* 更窄时把 PO# 的下限略微放宽，优先保留生产方标签与展开箭头 */
   @container (max-width: 420px) {
@@ -1646,6 +1691,7 @@ ${commonStyle}
     .topbar { padding: 10px 14px; }
     .container { padding: 20px 16px 72px; }
     .btn-ghost { padding: 6px 10px; }
+    .ad-slot { padding: 0 16px; }
   }
 
   /* 手机（≤ 700px）：顶栏换行、录入区单列、订单详情与弹窗适配 */
@@ -1656,6 +1702,7 @@ ${commonStyle}
     .topbar .user-area { width: 100%; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
     .btn-ghost { padding: 6px 8px; font-size: 12.5px; }
     .container { padding: 14px 12px 64px; }
+    .ad-slot { padding: 0 12px; margin-top: 10px; font-size: 12.5px; }
 
     /* 录入区：每个字段占满整行（币种 + 金额并排一行），按钮整行，避免横向挤压 */
     .add-row { gap: 8px; margin-bottom: 18px; }
@@ -1674,6 +1721,9 @@ ${commonStyle}
 
     /* 订单行：留白与展开区缩进收紧，把宽度留给 PO# 与标签 */
     .todo-header { padding: 12px; gap: 6px; }
+    /* 手机端交期**必须显示**：一行放不下完整日期时只显示「月/日」（不显示年份），不换行 */
+    .todo-due .due-full { display: none; }
+    .todo-due .due-short { display: inline; }
     .todo-body-inner { padding: 12px 12px 14px 12px; }
     .producer-select { max-width: 100%; }
     /* 备注区：状态提示单独一行，按钮换行不挤压 */
@@ -1734,7 +1784,7 @@ ${commonStyle}
       <button class="btn-ghost" id="btnLogout">退出</button>
     </div>
   </div>
-
+${adBlock}
 
   <div class="container">
     <div class="add-row"${addRowHidden ? ' style="display:none"' : ''}>
@@ -1783,12 +1833,14 @@ ${commonStyle}
   <div class="modal-mask" id="usersModal">
     <div class="modal">
       <h2>成员管理</h2>
+      <!-- 试用版数量限制提示（成员最多 2 个；订阅专业版后解除限制） -->
+      <div class="trial-limit-hint" id="userTrialHint" style="display:none"></div>
       <div class="field">
         <label>新增成员</label>
         <input type="text" id="newUserName" placeholder="用户名" style="margin-bottom:8px">
         <input type="password" id="newUserPwd" placeholder="密码" style="margin-bottom:8px">
         <input type="text" id="newUserPosition" placeholder="职位（手动输入，如：业务员 / 采购 / 主管）" maxlength="20" style="width:100%;padding:9px 12px;border:1px solid #e0e0dc;border-radius:6px;font-size:14px;background:#fff;color:#37352f;outline:none">
-        <div class="order-perm-hint" style="margin-top:6px">新增成员统一为普通成员：权限1「添加订单」自动（分配客户后即可录入订单）；「是否可查看全部订单」（**默认「是」**：可查看本团队全部订单）/ 权限2「查看客户订单」/ 权限3「下生产订单」/ 权限4「查看生产订单」/ 权限5「更新订单状态」（= 是 时订单列表与团队管理员相同）/ 权限6「下脱敏订单」（= 是 时可点击订单号右侧的「回形针」补填脱敏订单文件链接，**默认「无」**）/ 权限7「添加出货日期」（= 是 时可点击「交期」右侧的灰色空白区块添加出货日期，**默认「无」**）在下方成员列表中逐个设置</div>
+        <div class="order-perm-hint" style="margin-top:6px">新增成员统一为普通成员：权限1「添加订单」自动（在下方「可录入订单客户列表」中分配客户后即可录入订单）；「是否可查看全部订单」（**默认「是」**：可查看本团队全部订单；设为「否」时该成员只能查看自己录入的订单 + 下方「可查看订单客户列表」中客户的订单，该列表为空则只能看自己的）/ 权限2「查看客户订单」/ 权限3「下生产订单」/ 权限4「查看生产订单」/ 权限5「更新订单状态」（= 是 时订单列表与团队管理员相同）/ 权限6「下脱敏订单」（= 是 时可点击订单号右侧的「回形针」补填脱敏订单文件链接，**默认「无」**）/ 权限7「添加出货日期」（= 是 时可点击「交期」右侧的灰色空白区块添加出货日期，**默认「无」**）在下方成员列表中逐个设置</div>
       </div>
       <button class="btn-primary-sm" id="btnAddUser" style="width:100%">添加成员</button>
       <div class="msg" id="userMsg"></div>
@@ -1923,6 +1975,8 @@ ${commonStyle}
   <div class="modal-mask" id="producersModal">
     <div class="modal">
       <h2>生产方管理</h2>
+      <!-- 试用版数量限制提示（生产方最多 1 个；订阅专业版后解除限制） -->
+      <div class="trial-limit-hint" id="producerTrialHint" style="display:none"></div>
       <div class="field">
         <label>用户名</label>
         <input type="text" id="newProducerShort" placeholder="请输入用户名（同时作为登录名）" maxlength="30">
@@ -1957,6 +2011,8 @@ ${commonStyle}
   <div class="modal-mask" id="customersModal">
     <div class="modal">
       <h2>客户管理</h2>
+      <!-- 试用版数量限制提示（客户最多 1 个；订阅专业版后解除限制） -->
+      <div class="trial-limit-hint" id="customerTrialHint" style="display:none"></div>
       <div class="field">
         <label>用户名</label>
         <input type="text" id="newCustomerName" placeholder="请输入用户名（同时作为客户名称）" maxlength="60">
@@ -2099,8 +2155,9 @@ ${commonStyle}
   let isCustomer = false;   // 客户账号（仅看本客户的待办）
   let isObserver = false;   // 业务主管 / 生产部 / 生产方 / 客户（只读）
   let isTeamAdmin = false;  // 团队管理员（团队账号本人）
-  let isProTeam = false;    // 专业版（已订阅且在有效期内）：可使用全部功能
-  let isTrialTeam = false;  // 试用团队（团队账号未订阅 / 订阅已到期）：仅限本人使用 + 添加订单
+  let isProTeam = false;    // 专业版（已订阅且在有效期内）：数量不受限、页面顶部无广告
+  let isTrialTeam = false;  // 试用团队（未订阅 / 订阅已到期）：功能与专业版基本相同，仅数量受限
+                            //（成员 2 个 / 生产方 1 个 / 客户 1 个）+ 页面顶部显示广告位
   let teamIsPro = false;    // 所在团队是否在「专业版有效期内」：专业版改为「进行中」必须先指定生产方；试用团队无需（没有「生产方管理」）
   let isSuperadmin = false; // 超级管理员：只管理团队用户，不使用业务页面
   let isSuperviewer = false; // 总经理（拥有团队管理员的待办功能，但没有管理类功能）
@@ -2153,6 +2210,45 @@ ${commonStyle}
     return data;
   }
 
+  // ---------- 试用版数量限制（成员 / 生产方 / 客户） ----------
+  // 试用版（未订阅 / 订阅已到期）功能与专业版基本相同，仅限制数量：
+  //   成员最多 2 个、生产方最多 1 个、客户最多 1 个；订阅（专业版）后解除限制
+  //   （/api/me 不再返回 trialLimits），同时页面顶部的广告位也不再显示。
+  const TRIAL_LIMIT_TEXT = { members: '成员', producers: '生产方', customers: '客户' };
+
+  // 重新拉取试用版数量（打开管理弹窗 / 新增 / 删除后调用）：仅团队账号本人需要
+  async function refreshTrialLimits() {
+    if (!isTeamAdmin || !currentUser) return;
+    try {
+      const me = await api('/api/me');
+      currentUser.trialLimits = me.trialLimits || null;
+    } catch (e) { /* 忽略：保留上次结果 */ }
+  }
+
+  // 应用试用版数量限制：显示提示；达到上限时禁用对应的「添加」按钮
+  function applyTrialLimit(kind, hintId, btnId) {
+    const lim = (currentUser && currentUser.trialLimits && currentUser.trialLimits[kind]) || null;
+    const btn = document.getElementById(btnId);
+    const hint = document.getElementById(hintId);
+    if (btn) { btn.disabled = false; btn.style.opacity = ''; btn.style.cursor = ''; btn.title = ''; }
+    if (hint) { hint.style.display = 'none'; hint.className = 'trial-limit-hint'; hint.textContent = ''; }
+    if (!lim) return;
+    const label = TRIAL_LIMIT_TEXT[kind] || kind;
+    const full = lim.used >= lim.max;
+    if (hint) {
+      hint.style.display = '';
+      hint.className = full ? 'trial-limit-hint full' : 'trial-limit-hint';
+      hint.textContent = '试用版最多可添加 ' + lim.max + ' 个' + label +
+        '（已添加 ' + lim.used + ' 个）：订阅专业版后可解除数量限制，并移除页面顶部广告。';
+    }
+    if (btn && full) {
+      btn.disabled = true;
+      btn.style.opacity = '0.5';
+      btn.style.cursor = 'not-allowed';
+      btn.title = '试用版最多可添加 ' + lim.max + ' 个' + label + '：订阅专业版后可解除数量限制';
+    }
+  }
+
   // ---------- 初始化 ----------
   async function init() {
     try {
@@ -2189,13 +2285,11 @@ ${commonStyle}
     if (isTeamAdmin) {
       // 「团队设置」（团队名称）对团队账号（含试用）开放
       document.getElementById('btnSettings').style.display = '';
-      // 「成员管理 / 生产方管理 / 客户管理」为专业版功能：
-      // 试用账号仅限本人一人使用，不显示这些入口
-      if (isProTeam) {
-        document.getElementById('btnManageUsers').style.display = '';
-        document.getElementById('btnProducers').style.display = '';
-        document.getElementById('btnCustomers').style.display = '';
-      }
+      // 「成员管理 / 生产方管理 / 客户管理」：**试用版与专业版都开放** ——
+      // 试用版仅限制数量（成员 2 个 / 生产方 1 个 / 客户 1 个），订阅专业版后解除限制。
+      document.getElementById('btnManageUsers').style.display = '';
+      document.getElementById('btnProducers').style.display = '';
+      document.getElementById('btnCustomers').style.display = '';
     }
     // 顶栏团队徽章：团队账号显示「试用（无期限）/ 专业版有效期」，成员显示所属团队
     renderTeamBadge();
@@ -2287,7 +2381,7 @@ ${commonStyle}
       ? label + '申请已提交，等待超级管理员处理（点击可查看 / 修改）'
       : (isRenew
         ? '专业版剩余不足 30 天，点击选择套餐续费'
-        : '试用账号仅限本人使用；点击订阅升级为专业用户，即可使用全部功能');
+        : '试用版数量受限（成员 2 个 / 生产方 1 个 / 客户 1 个）且页面顶部含广告位；点击订阅升级为专业用户，即可解除限制并移除广告');
     btn.style.display = '';
   }
 
@@ -2459,6 +2553,19 @@ ${commonStyle}
     return ' due-far';
   }
 
+  // 交期的「月/日」短格式（手机端位置不够时只显示月/日，保证一行显示不换行）
+  //   '2026-09-23' → '09/23'；无法解析时原样返回
+  // 注：本段代码位于模板字符串内，正则中的反斜杠需写成「\\」（如 \\d）
+  function dueShortText(dueDate) {
+    const s = String(dueDate || '');
+    const m = s.match(/^(\\d{4})-(\\d{2})-(\\d{2})$/);
+    if (m) return m[2] + '/' + m[3];
+    const d = new Date(s);
+    if (isNaN(d.getTime())) return s;
+    return String(d.getMonth() + 1).padStart(2, '0') + '/' +
+      String(d.getDate()).padStart(2, '0');
+  }
+
   // 币种符号：人民币 = ¥；美元（含历史数据未填币种）= $
   function currencySymbolOf(currency) {
     return currency === 'CNY' ? '¥' : '$';
@@ -2491,7 +2598,11 @@ ${commonStyle}
       ? '<div class="todo-due' + dueClassOf(t.dueDate) + (canEditDueAmount ? ' editable' : '') + '"' +
         (canEditDueAmount ? ' data-editdue="' + esc(t.id) + '"' : '') +
         ' title="交期 ' + esc(t.dueDate) + (canEditDueAmount ? '（点击修改）' : '') + '">' +
-        esc(t.dueDate) + '</div>'
+        // 宽屏显示完整日期（yyyy-mm-dd）；窄屏（手机）由 CSS 切换为「月/日」，
+        // 确保交期在手机上**始终可见且一行显示不换行**
+        '<span class="due-full">' + esc(t.dueDate) + '</span>' +
+        '<span class="due-short">' + esc(dueShortText(t.dueDate)) + '</span>' +
+        '</div>'
       : (canEditDueAmount
         ? '<div class="todo-due editable" data-editdue="' + esc(t.id) + '" title="点击设置交期">设置交期</div>'
         : '');
@@ -2574,7 +2685,8 @@ ${commonStyle}
     // 「进行中 / 已完成」已有灰色生产方标签，无需保留下拉（避免误改）
     // 生产方下拉（仅管理员/总经理、且仅「待确认」阶段显示）
     // 「进行中 / 已完成」已有灰色生产方标签，无需保留下拉（避免误改）
-    // 试用账号没有「生产方管理」功能：列表中没有任何生产方时不显示无效的下拉
+    // 试用版同样有「生产方管理」（最多 1 个，订阅后解除限制）：
+    // 列表中没有任何生产方时不显示无效的下拉，改用下方提示引导去添加生产方
     // （历史上已存在生产方时仍可正常指定）
     const showProducerSelect = isTodoManager && st === 'pending' &&
       !(isTrialTeam && !producersCache.length);
@@ -2588,7 +2700,7 @@ ${commonStyle}
     // 管理员/总经理：未指定生产方时给出提示（进行中/已完成阶段无下拉，需先改回待确认）
     const producerHint = (isTodoManager && !t.producerId)
       ? ((isTrialTeam && !producersCache.length)
-        ? '<div class="producer-hint">订阅专业版解锁更多功能: 成员管理/客户管理/生产方管理/站内短信等。</div>'
+        ? '<div class="producer-hint">尚无生产方：可点击顶部「生产方管理」添加（试用版最多 1 个生产方，订阅后可添加更多）。</div>'
         : (st === 'pending'
           ? '<div class="producer-hint">尚未指定生产方：可直接在上方标题行的「生产方」下拉中选择；改为「进行中」前必须指定。</div>'
           : '<div class="producer-hint">尚未指定生产方：请先将状态改回「待确认」，指定生产方后再改为「进行中」。</div>'))
@@ -2615,7 +2727,8 @@ ${commonStyle}
     // 「添加备注」的身份：备注为**追加式**，任何用户都可为清单里可见的订单添加备注 ——
     //   观察类角色、待办管理者、订单本人，以及「是否可查看全部订单」= 是（默认）的普通成员
     //  （这类成员的清单里会显示本团队全部订单：只读，但可为他人的订单添加备注）
-    const canAddNote = isObserver || isTodoManager || isOwnOrder || canViewAllOrders;
+    const canAddNote = isObserver || isTodoManager || isOwnOrder || canViewAllOrders ||
+      !!t.viewOnly; // viewOnly = 通过「可查看订单客户列表」可见的他人订单（只读但可追加备注）
     const canDelete = !isObserver && st === 'pending' && (isTodoManager || isOwnOrder);
 
     const delBtn = canDelete
@@ -3157,7 +3270,9 @@ ${commonStyle}
       }).slice(0, 8);
       const emptyText = members.length
         ? '没有匹配的团队成员'
-        : (isTrialTeam ? '试用账号暂无可 @ 的成员：订阅专业版后可添加团队成员' : '本团队暂无可 @ 的成员');
+        : (isTrialTeam
+          ? '试用版暂无成员：可在「成员管理」中添加（最多 2 个成员，订阅后可添加更多）'
+          : '本团队暂无可 @ 的成员');
       openMentionPicker(input, list, emptyText);
     });
   });
@@ -3694,6 +3809,37 @@ ${commonStyle}
   });
 
   // ---------- 成员管理 ----------
+  // 「可查看订单客户列表」（「是否可查看全部订单」= 否 的成员显示）：
+  //   加入该清单的客户的订单才显示在该成员的订单列表中；清单为空 → 该成员只能查看自己录入的订单。
+  //   客户来源与「可录入订单客户列表」相同（「客户管理」维护的团队客户列表），两者互不影响。
+  function buildViewCustomerBlock(u, customerList, viewCustomers) {
+    const assignedIds = viewCustomers.map(function (c) { return c.id; });
+    const chips = viewCustomers.length
+      ? viewCustomers.map(function (c) {
+          return '<span class="customer-chip view-chip">' + esc(c.name) +
+            '<span class="customer-chip-del" data-delviewcustomer="' + esc(u.username) +
+            '" data-vcid="' + esc(c.id) + '" title="从「可查看订单客户列表」中移除">×</span></span>';
+        }).join('')
+      : '<span class="customer-empty">暂无客户（该成员只能查看自己录入的订单）</span>';
+    const available = customerList.filter(function (c) { return assignedIds.indexOf(c.id) === -1; });
+    const addRow = available.length
+      ? '<select class="customer-add-select"><option value="">选择客户</option>' +
+        available.map(function (c) {
+          return '<option value="' + esc(c.id) + '">' + esc(c.name) + '</option>';
+        }).join('') +
+        '</select>' +
+        '<button class="btn-primary-sm" data-addviewcustomer="' + esc(u.username) + '">添加客户</button>'
+      : '<div class="customer-empty">' +
+        (customerList.length ? '全部客户都已加入' : '请先到顶部「客户管理」添加客户') +
+        '</div>';
+    return '<div class="customer-manage view-customer-manage" data-view-customer-manage="' +
+      esc(u.username) + '">' +
+      '<div class="customer-manage-title">可查看订单客户列表</div>' +
+      '<div class="customer-list">' + chips + '</div>' +
+      '<div class="customer-add-row">' + addRow + '</div>' +
+      '</div>';
+  }
+
   document.getElementById('btnManageUsers').addEventListener('click', async () => {
     document.getElementById('userMsg').textContent = '';
     document.getElementById('usersModal').classList.add('show');
@@ -3703,6 +3849,9 @@ ${commonStyle}
     try {
       const data = await api('/api/users');
       const list = document.getElementById('userList');
+      // 试用版数量限制：成员最多 2 个（达到上限时禁用「添加成员」并提示订阅可解除限制）
+      await refreshTrialLimits();
+      applyTrialLimit('members', 'userTrialHint', 'btnAddUser');
       // 普通成员（原业务部）：editor（兼容历史 role=member 数据）
       const isMember = (u) => u.role === 'editor' || u.role === 'member';
       // 本团队生产方列表（生产部授权用）
@@ -3718,6 +3867,17 @@ ${commonStyle}
           customerMap[u.username] = cd.customers || [];
         } catch (e) {
           customerMap[u.username] = [];
+        }
+      }));
+      // 「可查看订单客户列表」（仅「是否可查看全部订单」= 否 的普通成员需要）
+      const viewCustomerMap = {};
+      await Promise.all(data.users.map(async (u) => {
+        if (!isMember(u) || u.canViewAllOrders !== false) return;
+        try {
+          const vd = await api('/api/view-customers/' + encodeURIComponent(u.username));
+          viewCustomerMap[u.username] = vd.customers || [];
+        } catch (e) {
+          viewCustomerMap[u.username] = [];
         }
       }));
       list.innerHTML = data.users.map(u => {
@@ -3756,10 +3916,17 @@ ${commonStyle}
               '</div>';
           customerBlock = \`
           <div class="customer-manage" data-customer-manage="\${esc(u.username)}">
-            <div class="customer-manage-title">客户列表</div>
+            <div class="customer-manage-title">可录入订单客户列表</div>
             <div class="customer-list">\${chips}</div>
             <div class="customer-add-row">\${addRow}</div>
           </div>\`;
+          // 「是否可查看全部订单」= 否 的成员：同一区块下方再显示「可查看订单客户列表」——
+          //   加入该清单的客户的订单才显示在该成员的订单列表中；清单为空 → 只能查看自己录入的订单。
+          if (u.canViewAllOrders === false) {
+            customerBlock += buildViewCustomerBlock(
+              u, customerList, viewCustomerMap[u.username] || []
+            );
+          }
         }
         // 成员行右侧的权限开关（团队管理员在这里逐个设定各成员的具体权限）：
         //   · 普通成员（原业务部）：权限1「添加订单」自动（有客户即可添加订单，只显示状态）；
@@ -3784,13 +3951,13 @@ ${commonStyle}
         };
         const isDeptMgrRow = u.role === 'deptmanager';
         const isSuperviewerRow = u.role === 'superviewer';
-        // 权限1「添加订单」：自动 —— 该成员的客户列表里有客户才可录入订单（无客户则不显示录入区）；
-        // **客户列表与订单可见范围无关**：可见范围由新权限「是否可查看全部订单」（默认「是」）决定
+        // 权限1「添加订单」：自动 —— 该成员的「可录入订单客户列表」里有客户才可录入订单（无客户则不显示录入区）；
+        // **该列表与订单可见范围无关**：可见范围由「是否可查看全部订单」（默认「是」）决定
         const myCustomers = customerMap[u.username] || [];
         const hasCustomers = myCustomers.length > 0;
         const orderPermBlock = noOrderPerm ? '' : (isMemberRow
           ? '<div class="order-perm-col">' +
-              '<span class="order-perm-static" title="权限1「添加订单」自动生效：客户列表里有客户 → 可录入订单（显示「添加新订单」录入区）；没有客户 → 权限为「无」、不显示录入区（与「查看全部订单」无关）">' +
+              '<span class="order-perm-static" title="权限1「添加订单」自动生效：「可录入订单客户列表」里有客户 → 可录入订单（显示「添加新订单」录入区）；没有客户 → 权限为「无」、不显示录入区（与「查看全部订单」无关）">' +
                 '添加订单：<b>' + (hasCustomers ? '有' : '无') + '</b>' +
                 (hasCustomers
                   ? '（已有 ' + myCustomers.length + ' 个客户）'
@@ -3799,7 +3966,8 @@ ${commonStyle}
               permToggle('data-canviewallorders', '是否可查看全部订单', u.canViewAllOrders !== false, '是', '否',
                 '「是否可查看全部订单」= 是（默认）时该成员可查看本团队全部订单（含待确认）：' +
                 '他人录入的订单在其清单里为只读（不能改状态 / 不能删除），但可添加备注；' +
-                '= 否 时该成员只能查看自己录入的订单（与「客户列表」无关）') +
+                '= 否 时该成员只能查看 ①自己录入的订单 与 ②下方「可查看订单客户列表」中客户的订单' +
+                '（该列表为空时只能查看自己录入的订单）') +
               permToggle('data-canvieworder', '是否可以查看客户订单', u.canViewCustomerOrder === true, '是', '否') +
               permToggle('data-canpurchase', '是否可以下生产订单', u.canPurchase === true, '是', '否') +
               permToggle('data-canviewpurchase', '是否可以查看生产订单', u.canViewPurchaseOrder === true, '是', '否') +
@@ -3967,6 +4135,38 @@ ${commonStyle}
           } catch (err) { alert(err.message); }
         });
       });
+      // 「可查看订单客户列表」：添加 / 移除客户
+      // （加入该清单的客户的订单才显示在该成员的订单列表中；清单为空 → 只能查看自己录入的订单）
+      list.querySelectorAll('[data-addviewcustomer]').forEach(el => {
+        el.addEventListener('click', async () => {
+          const name = el.getAttribute('data-addviewcustomer');
+          const block = el.closest('[data-view-customer-manage]');
+          const sel = block ? block.querySelector('.customer-add-select') : null;
+          if (!sel || !sel.value) { alert('请选择客户'); return; }
+          const cid = sel.value;
+          const picked = customerList.find(c => c.id === cid);
+          if (!picked) { alert('该客户已不存在，请关闭后重新打开成员管理'); return; }
+          try {
+            await api('/api/view-customers/' + encodeURIComponent(name), {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ name: picked.name, globalId: picked.id }),
+            });
+            await loadUsers();
+          } catch (err) { alert(err.message); }
+        });
+      });
+      list.querySelectorAll('[data-delviewcustomer]').forEach(el => {
+        el.addEventListener('click', async () => {
+          const uname = el.getAttribute('data-delviewcustomer');
+          const cid = el.getAttribute('data-vcid');
+          if (!confirm('确定从「可查看订单客户列表」中移除该客户吗？该客户的订单将不再显示在该成员的订单列表中。')) return;
+          try {
+            await api('/api/view-customers/' + encodeURIComponent(uname) + '/' + encodeURIComponent(cid), { method: 'DELETE' });
+            await loadUsers();
+          } catch (err) { alert(err.message); }
+        });
+      });
     } catch (err) {
       document.getElementById('userMsg').className = 'msg err';
       document.getElementById('userMsg').textContent = err.message;
@@ -4016,6 +4216,9 @@ ${commonStyle}
 
   async function loadProducers() {
     const list = document.getElementById('producerList');
+    // 试用版数量限制：生产方最多 1 个（达到上限时禁用「添加生产方」并提示订阅可解除限制）
+    await refreshTrialLimits();
+    applyTrialLimit('producers', 'producerTrialHint', 'btnAddProducer');
     try {
       const data = await api('/api/producers');
       const producers = data.producers || [];
@@ -4143,6 +4346,9 @@ ${commonStyle}
 
   async function loadCustomerList() {
     const list = document.getElementById('customerListRows');
+    // 试用版数量限制：客户最多 1 个（达到上限时禁用「添加客户」并提示订阅可解除限制）
+    await refreshTrialLimits();
+    applyTrialLimit('customers', 'customerTrialHint', 'btnAddCustomer');
     try {
       const data = await api('/api/customer-list');
       const customers = data.customers || [];
@@ -4426,7 +4632,8 @@ ${commonStyle}
     if (currentUser.status === 'expired') {
       return '试用中（原专业版订阅已于 ' + (exp || '—') + ' 到期）';
     }
-    return '试用中（无期限，仅限本人使用，可添加订单）';
+    // 试用版（无期限）：功能与专业版基本相同，仅数量受限（成员 / 生产方 / 客户）且页面顶部显示广告位
+    return '试用中（无期限，数量受限：成员 2 / 生产方 1 / 客户 1）';
   }
 
   // 团队标签：「团队名称（登录账号）」；两者相同时不重复显示
@@ -4486,7 +4693,7 @@ ${commonStyle}
       '开通后到期日：' + slashDate(proExpireDate(pickedPlan)) +
         '（从当前时间与原到期时间中较晚者起顺延）',
       '提交后系统会把申请信息（含套餐与收款说明）发送到您的注册邮箱，并抄送管理员提醒；',
-      '开通由超级管理员完成，开通前仍按试用账号使用（仅限本人使用，可添加订单）。'
+      '开通由超级管理员完成，开通前仍按试用账号使用（功能与专业版基本相同，仅数量受限：成员 2 个 / 生产方 1 个 / 客户 1 个，且页面顶部显示广告位）。'
     ];
     const req = currentUser.subscribeRequest;
     if (req && req.at) {
@@ -5032,6 +5239,11 @@ ${commonStyle}
         <img id="faviconPreview" class="favicon-preview" alt="图标预览" style="display:none">
         <span class="favicon-hint">填写图片链接（http:// 或 https:// 开头）即可；建议 32×32 / 64×64 的 PNG、ICO 或 SVG。保存后登录页 / 待办页 / 控制台的标签页图标都会使用它。</span>
       </div>
+      <div class="field">
+        <label>广告代码（试用版页面顶部的广告位；订阅专业版后自动移除）</label>
+        <textarea id="adCodeInput" rows="4" maxlength="3000" placeholder="粘贴广告 HTML / JS 代码片段，例如：<a href=&quot;https://example.com&quot;><img src=&quot;https://example.com/ad.png&quot;></a>；留空表示不插入广告"></textarea>
+      </div>
+      <div class="hint-line">广告只显示在<b>试用版（未订阅 / 订阅已到期）</b>页面顶部；团队订阅为专业版后<b>自动移除广告</b>。支持 HTML / JS 片段（最多 3000 字符），保存后刷新试用版页面即可看到。</div>
       <div class="msg" id="siteMsg"></div>
       <div class="modal-actions">
         <button class="btn-secondary" data-close="siteModal">取消</button>
@@ -5161,6 +5373,8 @@ ${commonStyle}
   let supportEmailCache = 'support@cloudnexus.cn';
   // 网站图标（favicon）图片链接（为空 = 使用浏览器默认图标）
   let faviconCache = '';
+  // 试用版页面顶部「广告位」的广告代码（HTML / JS 片段；为空 = 不插入广告）
+  let adCodeCache = '';
   let mailCache = null; // 邮件设置缓存（仅超级管理员使用）
   let currentTeamName = null; // 当前弹窗操作的团队（登录账号）
 
@@ -5550,6 +5764,7 @@ ${commonStyle}
     document.getElementById('noRegisterCheck').checked = !allowRegisterCache;
     document.getElementById('supportEmailInput').value = supportEmailCache;
     document.getElementById('faviconInput').value = faviconCache;
+    document.getElementById('adCodeInput').value = adCodeCache;
     updateFaviconPreview();
     document.getElementById('siteModal').classList.add('show');
   });
@@ -5567,6 +5782,13 @@ ${commonStyle}
     const allowRegister = !document.getElementById('noRegisterCheck').checked;
     const supportEmail = document.getElementById('supportEmailInput').value.trim();
     const favicon = document.getElementById('faviconInput').value.trim();
+    // 广告代码（试用版页面顶部广告位）：可留空（= 不插入广告）；支持 HTML / JS 片段
+    const adCode = document.getElementById('adCodeInput').value.trim();
+    if (adCode.length > 3000) {
+      msg.className = 'msg err';
+      msg.textContent = '广告代码不能超过 3000 个字符';
+      return;
+    }
     // 联系邮箱：可留空（= 登录页不显示该提示）；填写时校验格式（与后端一致）
     if (supportEmail &&
         !/^[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}$/.test(supportEmail)) {
@@ -5589,12 +5811,14 @@ ${commonStyle}
           allowRegister: allowRegister,
           supportEmail: supportEmail,
           favicon: favicon,
+          adCode: adCode,
         }),
       });
       siteNameCache = (data.settings && data.settings.siteName) || siteName;
       allowRegisterCache = !(data.settings && data.settings.allowRegister === false);
       supportEmailCache = (data.settings && data.settings.supportEmail) || '';
       faviconCache = (data.settings && data.settings.favicon) || '';
+      adCodeCache = (data.settings && data.settings.adCode) || '';
       document.getElementById('siteName').textContent = siteNameCache;
       document.title = siteNameCache + ' · 团队用户管理';
       applyFaviconToTab(faviconCache); // 当前标签页立即生效
@@ -5604,6 +5828,7 @@ ${commonStyle}
         (allowRegisterCache ? '允许新用户注册' : '已关闭新用户注册') +
         (supportEmailCache ? '；忘记密码联系邮箱：' + supportEmailCache : '；登录页不显示「忘记密码请联系」') +
         (faviconCache ? '；网站图标已更新' : '；网站图标已恢复默认') +
+        (adCodeCache ? '；试用版广告代码已保存（试用版页面顶部会显示该广告）' : '；试用版广告已移除') +
         '）';
       setTimeout(function () { document.getElementById('siteModal').classList.remove('show'); }, 1400);
     } catch (err) {
@@ -5862,6 +6087,7 @@ ${commonStyle}
       allowRegisterCache = !(s.settings && s.settings.allowRegister === false);
       supportEmailCache = (s.settings && s.settings.supportEmail) || '';
       faviconCache = (s.settings && s.settings.favicon) || '';
+      adCodeCache = (s.settings && s.settings.adCode) || '';
       document.getElementById('siteName').textContent = siteNameCache;
       document.title = siteNameCache + ' · 团队用户管理';
     } catch (e) { return; }

@@ -11,10 +11,12 @@ import { connect } from "cloudflare:sockets";
 //      确认通过后才允许正常登录；确认码可用「重新发送确认码」（/api/register/resend，
 //      需带登录密码，1 分钟内不重复发送、1 小时最多 5 次）重新获取；
 //   ③ 邮箱确认后账号即为「试用团队账号」：试用期无期限（不会到期，也不会因此被阻止登录）；
-//   ④ 只能团队账号本人一人使用：没有「成员管理 / 生产方管理 / 客户管理」功能，但可以添加订单
-//      （试用期添加订单时，客户名称直接手工填写，系统自动记入客户列表）；
-//   ⑤ 点击顶栏「订阅」选择套餐并提交「订阅申请」，由超级管理员开通后即成为「专业版」，
-//      有效期内可使用系统全部功能（成员 / 生产方 / 客户管理、订单状态流转等）；
+//   ④ 试用版功能与专业版**基本相同**（成员管理 / 生产方管理 / 客户管理、订单状态流转等都可使用），
+//      仅保留数量限制：成员最多 2 个、生产方最多 1 个、客户最多 1 个；此外页面顶部会显示「广告位」
+//      （广告代码由超级管理员在控制台「系统设置」中维护）。试用期添加订单时，客户名称仍可直接
+//      手工填写，系统自动记入客户列表（客户数量达上限后不再记入团队客户列表，订阅后可补齐）；
+//   ⑤ 点击顶栏「订阅」选择套餐并提交「订阅申请」，由超级管理员开通后即成为「专业版」：
+//      **数量限制解除、广告位不再显示**，并可继续使用系统全部功能；
 //      订阅时限与价格与原来保持一致。
 //   专业版订阅到期后自动回落为「试用（受限）」状态：仍可登录、可添加订单，再次「订阅」即可恢复。
 //   注：升级前已注册的团队账号（没有 emailVerified 字段）视为「已确认」，可直接登录。
@@ -25,9 +27,21 @@ const PLATFORM_TEAM = "__platform__"; // 超级管理员不属于任何团队（
 const DAY_MS = 24 * 60 * 60 * 1000;
 // 默认站点名称（超级管理员未在「系统设置」中自定义时使用；产品名：订单管理系统）
 const DEFAULT_SITE_NAME = "订单管理系统";
-// 管理类功能（成员 / 生产方 / 客户管理）为专业版功能，试用账号调用时返回该提示
-const PRO_ONLY_MSG =
-  "该功能为专业版功能：请点击顶栏「订阅」升级为专业用户后使用（试用账号仅限本人使用与添加订单）";
+// 试用版（未订阅 / 订阅已到期的回落状态）功能与专业版**基本相同**，仅保留数量限制：
+//   · 成员最多 2 个、生产方最多 1 个、客户最多 1 个；
+//   · 试用版页面顶部还会显示「广告位」（超级管理员在控制台「系统设置」中维护广告代码）；
+// 订阅为专业版后：数量限制解除，广告位不再显示。
+const TRIAL_LIMIT = { members: 2, producers: 1, customers: 1 };
+const TRIAL_LIMIT_LABEL = { members: "成员", producers: "生产方", customers: "客户" };
+
+// 试用版超限提示（订阅专业版后即可解除数量限制）
+function trialLimitMsg(kind) {
+  const max = TRIAL_LIMIT[kind] || 0;
+  const label = TRIAL_LIMIT_LABEL[kind] || kind;
+  return (
+    `试用版最多可添加 ${max} 个${label}：如需添加更多，请点击顶栏「订阅」升级为专业用户（订阅后解除数量限制）`
+  );
+}
 // 注册邮箱格式（团队用户注册必填项）：user@domain.tld
 const EMAIL_RE = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}$/;
 
@@ -148,11 +162,6 @@ function isProTeam(team) {
 function subscribeRequestOf(team) {
   if (!team) return null;
   return team.subscribeRequest || team.renewRequest || null;
-}
-
-// 管理类功能仅专业版可用（试用账号返回统一的 403 提示）
-function proOnly() {
-  return json({ error: PRO_ONLY_MSG }, 403);
 }
 
 // 团队被停用后，团队账号与其成员都无法继续使用
@@ -370,8 +379,9 @@ function encodeMimeHeader(text) {
 // 登录页「忘记密码请联系」的默认邮箱（超级管理员可在「系统设置」中自定义；清空则不显示该提示）
 const DEFAULT_SUPPORT_EMAIL = "support@cloudnexus.cn";
 
-// 读取全局设置（KV: settings）：网站名称 + 是否允许新用户注册 + 联系邮箱 + 网站图标
+// 读取全局设置（KV: settings）：网站名称 + 是否允许新用户注册 + 联系邮箱 + 网站图标 + 试用版广告代码
 //   allowRegister：**默认允许**（历史数据没有该字段时行为保持不变）；仅超级管理员可修改
+//   adCode：试用版页面顶部的广告代码（HTML / JS 片段），订阅为专业版后不再显示；仅超级管理员可修改
 async function getGlobalSettings(env) {
   let settings = {};
   try {
@@ -390,6 +400,8 @@ async function getGlobalSettings(env) {
         : String(settings.supportEmail || "").trim(),
     // 网站图标（favicon）图片链接：为空表示使用默认图标（浏览器标签页不额外指定）
     favicon: String(settings.favicon || "").trim(),
+    // 广告代码（试用版页面顶部广告位）：为空表示不插入广告
+    adCode: String(settings.adCode || "").trim(),
   };
 }
 
@@ -1202,6 +1214,21 @@ async function saveCustomers(env, username, customers) {
   await env.TODO_KV.put(`customers:${username}`, JSON.stringify(customers));
 }
 
+// 获取某成员的「可查看订单客户列表」：
+//   仅对「是否可查看全部订单」= 否 的普通成员生效 —— 该成员只能查看
+//   ① 自己录入的订单、② 这些客户的订单（订单的 customer 名称命中即为可见）；
+//   列表为空 → 只能查看自己录入的订单。
+//   由团队管理员在「成员管理」中维护（数据独立存储，与「可录入订单客户列表」互不影响）。
+async function getViewCustomers(env, username) {
+  const raw = await env.TODO_KV.get(`viewCustomers:${username}`);
+  return raw ? JSON.parse(raw) : [];
+}
+
+// 保存某成员的「可查看订单客户列表」
+async function saveViewCustomers(env, username, list) {
+  await env.TODO_KV.put(`viewCustomers:${username}`, JSON.stringify(list));
+}
+
 // 获取本团队客户列表（「客户管理」维护；成员管理中为成员分配客户时从这里选择）
 // 历史数据（默认团队）落在旧 key "customerList" 上，保持兼容
 async function getCustomerList(env, teamId) {
@@ -1218,6 +1245,8 @@ async function saveCustomerList(env, teamId, list) {
 
 // 试用团队账号添加订单时手工填写的客户名称：自动记入「本人客户列表」与「团队客户列表」，
 // 便于订阅为专业版后在「客户管理」中看到并分配给成员（不会自动创建客户登录账号）
+// 注：试用版「客户管理」最多 1 个客户（TRIAL_LIMIT.customers）—— 已满时不再自动记入团队客户列表
+//     （本人的客户列表照常记录，用于订单校验），订阅后可在「客户管理」中补齐。
 async function rememberTrialCustomer(env, user, name) {
   const trimmed = String(name || "").trim();
   if (!trimmed) return;
@@ -1232,7 +1261,9 @@ async function rememberTrialCustomer(env, user, name) {
   }
   const teamId = teamIdOf(user);
   const list = await getCustomerList(env, teamId);
-  if (!list.some((c) => c.name === trimmed)) {
+  const already = list.some((c) => c.name === trimmed);
+  if (!already && list.length >= TRIAL_LIMIT.customers) return; // 试用版已达客户数量上限
+  if (!already) {
     list.push({
       id: genToken().slice(0, 12),
       name: trimmed,
@@ -1517,8 +1548,10 @@ function canUpdateOrderStatus(user) {
 // 权限「是否可查看全部订单」（普通成员，**默认「是」**）：
 //   · = 是（字段未设置或为 true）：该成员的订单列表显示**本团队全部订单**（含待确认）——
 //     他人录入的订单在其清单里为只读（不能改状态 / 不能指定生产方 / 不能删除），但**可添加备注**；
-//   · = 否：只能查看**自己录入的订单**（自己的订单可正常编辑 / 删除）。
-// 注：「客户列表」只决定权限1「添加订单」是否生效（有客户才能录入订单），**不再是**可见范围的依据。
+//   · = 否：只能查看 ①自己录入的订单 与 ②「可查看订单客户列表」中客户的订单
+//     （该列表由团队管理员在「成员管理」中维护；列表为空 → 只能查看自己录入的订单）。
+// 注：「客户列表」（现名「可录入订单客户列表」）只决定权限1「添加订单」是否生效
+//     （有客户才能录入订单），**不再是**可见范围的依据。
 function canViewAllTeamOrders(user) {
   if (!user) return false;
   if (isMemberRole(user.role)) return user.canViewAllOrders !== false;
@@ -1555,6 +1588,36 @@ function canNoteOthersTodos(user) {
   if (canManageOthersTodos(user)) return true;
   if (isMemberRole(user.role)) return canViewAllTeamOrders(user);
   return false;
+}
+
+// 新功能「可查看订单客户列表」（「是否可查看全部订单」= 否 的普通成员）：
+//   · 该成员除了**自己录入的订单**外，还能看到「可查看订单客户列表」中客户的订单（本团队，含待确认）；
+//   · 这些订单在其清单里为**只读**（不能改状态、不能指定生产方、不能删除），但**可追加备注**；
+//   · 该列表为空时 → 只能查看自己录入的订单（与历史行为一致）。
+// 返回该成员「可查看订单客户列表」中的客户名称（去空、去重；= 查看全部订单 的成员返回空数组）
+async function viewCustomerNamesOf(env, user) {
+  if (!user || !isMemberRole(user.role) || canViewAllTeamOrders(user)) return [];
+  const list = await getViewCustomers(env, user.username);
+  const out = [];
+  for (const c of Array.isArray(list) ? list : []) {
+    const name = String((c && c.name) || "").trim();
+    if (name && out.indexOf(name) === -1) out.push(name);
+  }
+  return out;
+}
+
+// 该成员能否为「某位成员的某条订单」追加备注：
+//   仅当这条订单的客户在其「可查看订单客户列表」中（即该订单在其清单里可见）时才允许。
+async function canNoteVisibleOrderForMember(env, user, targetOwner, todoId) {
+  if (!user || !isMemberRole(user.role) || canViewAllTeamOrders(user)) return false;
+  if (!targetOwner || targetOwner === user.username) return false;
+  const names = await viewCustomerNamesOf(env, user);
+  if (!names.length) return false;
+  const member = await getTeamMember(env, targetOwner, teamIdOf(user));
+  if (!member) return false;
+  const todos = await getTodos(env, targetOwner);
+  const t = todos.find((x) => x.id === todoId);
+  return !!t && names.indexOf(String(t.customer || "").trim()) !== -1;
 }
 
 // 部门主管（deptmanager）：功能参照「总经理」，另有 2 个可逐个开关的「查看」权限
@@ -1699,6 +1762,7 @@ async function deleteAccountData(env, username) {
   await env.TODO_KV.delete(`user:${username}`);
   await env.TODO_KV.delete(`todos:${username}`);
   await env.TODO_KV.delete(`customers:${username}`);
+  await env.TODO_KV.delete(`viewCustomers:${username}`); // 「可查看订单客户列表」
   await env.TODO_KV.delete(`watch:${username}`);
   await env.TODO_KV.delete(`mentions:${username}`);
   await env.TODO_KV.delete(`emailcode:${username}`);
@@ -1917,7 +1981,8 @@ async function handleApi(request, env, pathname) {
     // 权限5「是否可以更新订单状态」= 有 时，订单列表显示与功能与团队管理员相同
     info.canUpdateStatus = canUpdateOrderStatus(user);
     // 权限「是否可查看全部订单」（普通成员，**默认「是」**）：= 是 → 可见本团队全部订单（只读，可备注）；
-    // = 否 → 只能查看自己录入的订单（与「客户列表」无关：客户只决定能否录入订单）
+    // = 否 → 只能查看 自己录入的订单 + 「可查看订单客户列表」中客户的订单
+    //（与「可录入订单客户列表」无关：后者只决定能否录入订单）
     info.canViewAllOrders = canViewAllTeamOrders(user);
     // 权限6「是否可以下脱敏订单」（订单号右侧灰色的「回形针」：点击补填脱敏订单文件链接）
     info.canPlaceMaskedOrder = canPlaceMaskedOrder(user);
@@ -1932,6 +1997,21 @@ async function handleApi(request, env, pathname) {
       info.trialEndsAt = user.trialEndsAt || "";
       info.expiresAt = user.expiresAt || "";
       info.status = teamStatusOf(user);
+      // 试用版（未订阅 / 订阅已到期）数量限制：成员 / 生产方 / 客户 的已用数量与上限 ——
+      // 前端据此显示「试用版最多可添加 N 个…」提示并在达到上限时禁用添加按钮（订阅后该字段不再返回 = 不限）
+      if (!isProTeam(user)) {
+        const teamId = teamIdOf(user);
+        const [members, producers, customers] = await Promise.all([
+          listUsers(env, teamId),
+          getProducers(env, teamId),
+          getCustomerList(env, teamId),
+        ]);
+        info.trialLimits = {
+          members: { used: members.length, max: TRIAL_LIMIT.members },
+          producers: { used: producers.length, max: TRIAL_LIMIT.producers },
+          customers: { used: customers.length, max: TRIAL_LIMIT.customers },
+        };
+      }
       // 订阅 / 续费申请（含所选套餐），超级管理员开通后自动清除
       const subRequest = subscribeRequestOf(user);
       info.subscribeRequest = subRequest;
@@ -1995,27 +2075,30 @@ async function handleApi(request, env, pathname) {
 
   // ---- 站点 / 团队设置 ----
   // 获取设置（所有登录用户可读）：siteName=全局网站名称，teamName=所属团队名称，allowRegister=是否允许新用户注册
+  // 广告代码（adCode）仅返回给超级管理员（其他用户不需要，也不应看到广告代码本身）
   if (pathname === "/api/settings" && method === "GET") {
     const user = await getCurrentUser(request, env);
     if (!user) return json({ error: "未登录" }, 401);
     const g = await getGlobalSettings(env);
     const team = isTeamAdmin(user.role) ? user : await getTeam(env, teamIdOf(user));
-    return json({
-      settings: {
-        siteName: g.siteName,
-        allowRegister: g.allowRegister,
-        supportEmail: g.supportEmail,
-        favicon: g.favicon,
-        teamName: team ? team.teamName || team.username : "",
-      },
-    });
+    const view = {
+      siteName: g.siteName,
+      allowRegister: g.allowRegister,
+      supportEmail: g.supportEmail,
+      favicon: g.favicon,
+      teamName: team ? team.teamName || team.username : "",
+    };
+    if (isSuperAdmin(user.role)) view.adCode = g.adCode;
+    return json({ settings: view });
   }
 
-  // 保存设置：超级管理员改「网站名称 / 是否允许新用户注册」；团队管理员改「团队名称」
+  // 保存设置：超级管理员改「网站名称 / 是否允许新用户注册 / 联系邮箱 / 网站图标 / 广告代码」；
+  // 团队管理员改「团队名称」
   if (pathname === "/api/settings" && method === "POST") {
     const user = await getCurrentUser(request, env);
     if (!user) return json({ error: "未登录" }, 401);
-    const { siteName, teamName, allowRegister, supportEmail, favicon } = await readBody(request);
+    const { siteName, teamName, allowRegister, supportEmail, favicon, adCode } =
+      await readBody(request);
     if (teamName !== undefined) {
       if (!isTeamAdmin(user.role)) return json({ error: "无权限" }, 403);
       const tname = String(teamName).trim();
@@ -2024,12 +2107,13 @@ async function handleApi(request, env, pathname) {
       await env.TODO_KV.put(`user:${user.username}`, JSON.stringify(user));
       return json({ ok: true, settings: { teamName: tname } });
     }
-    // 网站名称 / 注册开关 / 联系邮箱 / 网站图标：仅超级管理员
+    // 网站名称 / 注册开关 / 联系邮箱 / 网站图标 / 广告代码：仅超级管理员
     if (
       siteName === undefined &&
       allowRegister === undefined &&
       supportEmail === undefined &&
-      favicon === undefined
+      favicon === undefined &&
+      adCode === undefined
     ) {
       return json({ error: "请填写要保存的内容" }, 400);
     }
@@ -2062,6 +2146,12 @@ async function handleApi(request, env, pathname) {
       }
       settings.favicon = url; // 允许为空：使用默认图标
     }
+    // 广告代码（试用版页面顶部广告位；支持 HTML / JS 片段，订阅专业版后不再显示）
+    if (adCode !== undefined) {
+      const v = String(adCode === null ? "" : adCode).trim();
+      if (v.length > 3000) return json({ error: "广告代码不能超过 3000 个字符" }, 400);
+      settings.adCode = v; // 允许为空：不插入广告
+    }
     await env.TODO_KV.put("settings", JSON.stringify(settings));
     const g = await getGlobalSettings(env);
     return json({
@@ -2071,6 +2161,7 @@ async function handleApi(request, env, pathname) {
         allowRegister: g.allowRegister,
         supportEmail: g.supportEmail,
         favicon: g.favicon,
+        adCode: g.adCode,
       },
     });
   }
@@ -2484,16 +2575,21 @@ async function handleApi(request, env, pathname) {
     const user = await getCurrentUser(request, env);
     if (!user) return json({ error: "未登录" }, 401);
     if (!isTeamAdmin(user.role)) return json({ error: "无权限" }, 403);
-    if (!isProTeam(user)) return proOnly();
     return json({ users: await listUsers(env, teamIdOf(user)) });
   }
 
-  // 新增成员（专业版功能；试用账号仅限本人使用）
+  // 新增成员（试用版与专业版功能相同；试用版最多 2 个成员，订阅后解除限制）
   if (pathname === "/api/users" && method === "POST") {
     const user = await getCurrentUser(request, env);
     if (!user) return json({ error: "未登录" }, 401);
     if (!isTeamAdmin(user.role)) return json({ error: "无权限" }, 403);
-    if (!isProTeam(user)) return proOnly();
+    // 试用版数量限制：成员最多 2 个（专业版不限）
+    if (!isProTeam(user)) {
+      const members = await listUsers(env, teamIdOf(user));
+      if (members.length >= TRIAL_LIMIT.members) {
+        return json({ error: trialLimitMsg("members") }, 403);
+      }
+    }
     const { username, password, position } = await readBody(request);
     if (!username || !password) {
       return json({ error: "请填写用户名和密码" }, 400);
@@ -2526,7 +2622,6 @@ async function handleApi(request, env, pathname) {
     const user = await getCurrentUser(request, env);
     if (!user) return json({ error: "未登录" }, 401);
     if (!isTeamAdmin(user.role)) return json({ error: "无权限" }, 403);
-    if (!isProTeam(user)) return proOnly();
     const target = decodeURIComponent(pathname.replace("/api/users/", ""));
     // 只能删除本团队成员
     const targetUser = await getTeamMember(env, target, teamIdOf(user));
@@ -2534,6 +2629,7 @@ async function handleApi(request, env, pathname) {
     await env.TODO_KV.delete(`user:${target}`);
     await env.TODO_KV.delete(`todos:${target}`);
     await env.TODO_KV.delete(`customers:${target}`);
+    await env.TODO_KV.delete(`viewCustomers:${target}`); // 「可查看订单客户列表」一并清理
     await env.TODO_KV.delete(`watch:${target}`);
     await env.TODO_KV.delete(`mentions:${target}`); // 站内消息（@提醒）一并清理
     return json({ ok: true });
@@ -2548,7 +2644,6 @@ async function handleApi(request, env, pathname) {
     const user = await getCurrentUser(request, env);
     if (!user) return json({ error: "未登录" }, 401);
     if (!isTeamAdmin(user.role)) return json({ error: "无权限" }, 403);
-    if (!isProTeam(user)) return proOnly();
     const teamId = teamIdOf(user);
     const target = decodeURIComponent(
       pathname.replace("/api/users/", "").replace("/reset-password", "")
@@ -2615,7 +2710,6 @@ async function handleApi(request, env, pathname) {
     const user = await getCurrentUser(request, env);
     if (!user) return json({ error: "未登录" }, 401);
     if (!isTeamAdmin(user.role)) return json({ error: "无权限" }, 403);
-    if (!isProTeam(user)) return proOnly();
     const target = decodeURIComponent(
       pathname.replace("/api/users/", "").replace("/remark", "")
     );
@@ -2637,7 +2731,6 @@ async function handleApi(request, env, pathname) {
     const user = await getCurrentUser(request, env);
     if (!user) return json({ error: "未登录" }, 401);
     if (!isTeamAdmin(user.role)) return json({ error: "无权限" }, 403);
-    if (!isProTeam(user)) return proOnly();
     const target = decodeURIComponent(
       pathname.replace("/api/users/", "").replace("/position", "")
     );
@@ -2659,7 +2752,9 @@ async function handleApi(request, env, pathname) {
   //                             且订单号与「自产单 / 外购单」标签可点击）
   //     canViewAllOrders        新权限「是否可查看全部订单」（普通成员，**默认「是」**）：
   //                             = 是 → 可见本团队全部订单（他人录入的订单为只读，可添加备注）；
-  //                             = 否 → 只能查看自己录入的订单（与「客户列表」无关）
+  //                             = 否 → 只能查看 自己录入的订单 + 「可查看订单客户列表」中客户的订单
+  //                             （「可查看订单客户列表」由团队管理员通过 /api/view-customers/ 维护；
+  //                              该列表为空时只能查看自己录入的订单）
   //     canPlaceMaskedOrder     权限6「是否可以下脱敏订单」（普通成员**默认「否」**）：
   //                             = 是 → 可在订单列表中点击订单号右侧灰色的「回形针」图标
   //                             补填**脱敏订单文件链接**（已有链接时该图标只用于打开链接）
@@ -2676,7 +2771,6 @@ async function handleApi(request, env, pathname) {
     const user = await getCurrentUser(request, env);
     if (!user) return json({ error: "未登录" }, 401);
     if (!isTeamAdmin(user.role)) return json({ error: "无权限" }, 403);
-    if (!isProTeam(user)) return proOnly();
     const target = decodeURIComponent(
       pathname.replace("/api/users/", "").replace("/order-permission", "")
     );
@@ -2708,7 +2802,7 @@ async function handleApi(request, env, pathname) {
       return json(
         {
           error:
-            "该成员的「添加订单」权限由「客户列表」自动决定（有客户即可添加订单），无需在此设置",
+            "该成员的「添加订单」权限由「可录入订单客户列表」自动决定（有客户即可添加订单），无需在此设置",
         },
         400
       );
@@ -2847,7 +2941,6 @@ async function handleApi(request, env, pathname) {
     const user = await getCurrentUser(request, env);
     if (!user) return json({ error: "未登录" }, 401);
     if (!isTeamAdmin(user.role)) return json({ error: "无权限" }, 403);
-    if (!isProTeam(user)) return proOnly();
     const target = decodeURIComponent(pathname.replace("/api/customers/", ""));
     const member = await getTeamMember(env, target, teamIdOf(user));
     if (!member) return json({ error: "成员不存在" }, 404);
@@ -2875,7 +2968,6 @@ async function handleApi(request, env, pathname) {
     const user = await getCurrentUser(request, env);
     if (!user) return json({ error: "未登录" }, 401);
     if (!isTeamAdmin(user.role)) return json({ error: "无权限" }, 403);
-    if (!isProTeam(user)) return proOnly();
     const rest = decodeURIComponent(pathname.replace("/api/customers/", ""));
     const slash = rest.lastIndexOf("/");
     if (slash === -1) return json({ error: "参数错误" }, 400);
@@ -2890,21 +2982,91 @@ async function handleApi(request, env, pathname) {
   }
 
 
-  // ---- 客户管理（专业版功能；团队内共享，成员管理中为成员分配客户时从这里选择）----
-  // 获取本团队客户列表（专业版功能：仅专业版团队账号可读）
+  // ---- 「可查看订单客户列表」（「是否可查看全部订单」= 否 的普通成员；仅团队管理员可维护）----
+  // 作用：加入该清单的客户的订单位显示在该成员的订单列表中；清单为空 → 该成员只能查看自己录入的订单。
+  // 与「可录入订单客户列表」（/api/customers/<用户名>，决定能否录入订单）相互独立。
+  // 获取某成员的「可查看订单客户列表」（团队管理员可读任意本团队成员；成员可读自己的）
+  if (pathname.startsWith("/api/view-customers/") && method === "GET") {
+    const user = await getCurrentUser(request, env);
+    if (!user) return json({ error: "未登录" }, 401);
+    const target = decodeURIComponent(pathname.replace("/api/view-customers/", ""));
+    if (target !== user.username) {
+      const member = isTeamAdmin(user.role)
+        ? await getTeamMember(env, target, teamIdOf(user))
+        : null;
+      if (!member) return json({ error: "无权限" }, 403);
+    }
+    return json({ customers: await getViewCustomers(env, target) });
+  }
+
+  // 为某成员的「可查看订单客户列表」新增客户（仅团队管理员）
+  if (pathname.startsWith("/api/view-customers/") && method === "POST") {
+    const user = await getCurrentUser(request, env);
+    if (!user) return json({ error: "未登录" }, 401);
+    if (!isTeamAdmin(user.role)) return json({ error: "无权限" }, 403);
+    const target = decodeURIComponent(pathname.replace("/api/view-customers/", ""));
+    const member = await getTeamMember(env, target, teamIdOf(user));
+    if (!member) return json({ error: "成员不存在" }, 404);
+    const { name, globalId } = await readBody(request);
+    if (!name || !name.trim()) return json({ error: "请输入客户名称" }, 400);
+    const trimmed = name.trim();
+    const gid = globalId ? String(globalId).trim() : "";
+    const list = await getViewCustomers(env, target);
+    if (list.some((c) => c.name === trimmed || (gid && c.id === gid))) {
+      return json({ error: "该客户已在「可查看订单客户列表」中" }, 400);
+    }
+    const customer = {
+      id: gid || genToken().slice(0, 12),
+      name: trimmed,
+      createdAt: new Date().toISOString(),
+    };
+    list.push(customer);
+    await saveViewCustomers(env, target, list);
+    return json({ ok: true, customer });
+  }
+
+  // 从某成员的「可查看订单客户列表」中移除客户（仅团队管理员）
+  if (pathname.startsWith("/api/view-customers/") && method === "DELETE") {
+    const user = await getCurrentUser(request, env);
+    if (!user) return json({ error: "未登录" }, 401);
+    if (!isTeamAdmin(user.role)) return json({ error: "无权限" }, 403);
+    const rest = decodeURIComponent(pathname.replace("/api/view-customers/", ""));
+    const slash = rest.lastIndexOf("/");
+    if (slash === -1) return json({ error: "参数错误" }, 400);
+    const target = rest.slice(0, slash);
+    const cid = rest.slice(slash + 1);
+    const member = await getTeamMember(env, target, teamIdOf(user));
+    if (!member) return json({ error: "成员不存在" }, 404);
+    let list = await getViewCustomers(env, target);
+    list = list.filter((c) => c.id !== cid);
+    await saveViewCustomers(env, target, list);
+    return json({ ok: true });
+  }
+
+
+  // ---- 客户管理（团队内共享，成员管理中为成员分配客户时从这里选择）----
+  // 获取本团队客户列表（团队账号本人可读；试用版最多 1 个客户，订阅专业版后解除限制）
   if (pathname === "/api/customer-list" && method === "GET") {
     const user = await getCurrentUser(request, env);
     if (!user) return json({ error: "未登录" }, 401);
-    if (!isTeamAdmin(user.role) || !isProTeam(user)) return proOnly();
+    if (!isTeamAdmin(user.role)) return json({ error: "无权限" }, 403);
     return json({ customers: await getCustomerList(env, teamIdOf(user)) });
   }
 
-  // 新增客户（仅本团队管理员）：字段为「用户名」（也是客户名称）、「密码」和「说明」；同时创建客户登录账号
+  // 新增客户（试用版与专业版功能相同；试用版最多 1 个客户，订阅后解除限制）：
+  // 字段为「用户名」（也是客户名称）、「密码」和「说明」；同时创建客户登录账号
   if (pathname === "/api/customer-list" && method === "POST") {
     const user = await getCurrentUser(request, env);
     if (!user) return json({ error: "未登录" }, 401);
     if (!isTeamAdmin(user.role)) return json({ error: "无权限" }, 403);
     const teamId = teamIdOf(user);
+    // 试用版数量限制：客户最多 1 个（专业版不限）
+    if (!isProTeam(user)) {
+      const existing = await getCustomerList(env, teamId);
+      if (existing.length >= TRIAL_LIMIT.customers) {
+        return json({ error: trialLimitMsg("customers") }, 403);
+      }
+    }
     const { name, password, description } = await readBody(request);
     if (!name || !name.trim()) return json({ error: "请输入用户名" }, 400);
     if (!password || !String(password).trim()) {
@@ -2947,7 +3109,6 @@ async function handleApi(request, env, pathname) {
     const user = await getCurrentUser(request, env);
     if (!user) return json({ error: "未登录" }, 401);
     if (!isTeamAdmin(user.role)) return json({ error: "无权限" }, 403);
-    if (!isProTeam(user)) return proOnly();
     const teamId = teamIdOf(user);
     const id = decodeURIComponent(pathname.replace("/api/customer-list/", ""));
     let list = await getCustomerList(env, teamId);
@@ -2971,7 +3132,6 @@ async function handleApi(request, env, pathname) {
     const user = await getCurrentUser(request, env);
     if (!user) return json({ error: "未登录" }, 401);
     if (!isTeamAdmin(user.role)) return json({ error: "无权限" }, 403);
-    if (!isProTeam(user)) return proOnly();
     const teamId = teamIdOf(user);
     const id = decodeURIComponent(
       pathname.replace("/api/customer-list/", "").replace("/description", "")
@@ -2994,13 +3154,20 @@ async function handleApi(request, env, pathname) {
     return json({ producers: await getProducers(env, teamIdOf(user)) });
   }
 
-  // 新增生产方（专业版功能）：字段为「用户名」「密码」（生产方用该账号登录，只看指定给自己的待办）和「说明」
+  // 新增生产方（试用版与专业版功能相同；试用版最多 1 个生产方，订阅后解除限制）：
+  // 字段为「用户名」「密码」（生产方用该账号登录，只看指定给自己的待办）和「说明」
   if (pathname === "/api/producers" && method === "POST") {
     const user = await getCurrentUser(request, env);
     if (!user) return json({ error: "未登录" }, 401);
     if (!isTeamAdmin(user.role)) return json({ error: "无权限" }, 403);
-    if (!isProTeam(user)) return proOnly();
     const teamId = teamIdOf(user);
+    // 试用版数量限制：生产方最多 1 个（专业版不限）
+    if (!isProTeam(user)) {
+      const existing = await getProducers(env, teamId);
+      if (existing.length >= TRIAL_LIMIT.producers) {
+        return json({ error: trialLimitMsg("producers") }, 403);
+      }
+    }
     const { username, password, description, nature } = await readBody(request);
     const uname = (username || "").trim();
     if (!uname) return json({ error: "请输入用户名" }, 400);
@@ -3043,7 +3210,6 @@ async function handleApi(request, env, pathname) {
     const user = await getCurrentUser(request, env);
     if (!user) return json({ error: "未登录" }, 401);
     if (!isTeamAdmin(user.role)) return json({ error: "无权限" }, 403);
-    if (!isProTeam(user)) return proOnly();
     const teamId = teamIdOf(user);
     const id = decodeURIComponent(pathname.replace("/api/producers/", ""));
     let producers = await getProducers(env, teamId);
@@ -3067,7 +3233,6 @@ async function handleApi(request, env, pathname) {
     const user = await getCurrentUser(request, env);
     if (!user) return json({ error: "未登录" }, 401);
     if (!isTeamAdmin(user.role)) return json({ error: "无权限" }, 403);
-    if (!isProTeam(user)) return proOnly();
     const teamId = teamIdOf(user);
     const id = decodeURIComponent(
       pathname.replace("/api/producers/", "").replace("/description", "")
@@ -3091,7 +3256,6 @@ async function handleApi(request, env, pathname) {
     const user = await getCurrentUser(request, env);
     if (!user) return json({ error: "未登录" }, 401);
     if (!isTeamAdmin(user.role)) return json({ error: "无权限" }, 403);
-    if (!isProTeam(user)) return proOnly();
     const teamId = teamIdOf(user);
     const id = decodeURIComponent(
       pathname.replace("/api/producers/", "").replace("/nature", "")
@@ -3140,7 +3304,6 @@ async function handleApi(request, env, pathname) {
     const user = await getCurrentUser(request, env);
     if (!user) return json({ error: "未登录" }, 401);
     if (!isTeamAdmin(user.role)) return json({ error: "无权限" }, 403);
-    if (!isProTeam(user)) return proOnly();
     const teamId = teamIdOf(user);
     const target = decodeURIComponent(pathname.replace(watchPrefix, ""));
     const member = await getTeamMember(env, target, teamId);
@@ -3169,7 +3332,6 @@ async function handleApi(request, env, pathname) {
     const user = await getCurrentUser(request, env);
     if (!user) return json({ error: "未登录" }, 401);
     if (!isTeamAdmin(user.role)) return json({ error: "无权限" }, 403);
-    if (!isProTeam(user)) return proOnly();
     const rest = decodeURIComponent(pathname.replace(watchPrefix, ""));
     const slash = rest.lastIndexOf("/");
     if (slash === -1) return json({ error: "参数错误" }, 400);
@@ -3296,13 +3458,29 @@ async function handleApi(request, env, pathname) {
     //   · 是（默认）：可**查看本团队全部订单**（只读 —— 不能改状态、不能指定生产方、
     //     不能删除他人的订单）；**备注为追加式**：可为清单里的任意订单（含他人录入的）添加备注；
     //   · 否：只返回**自己的订单**（可正常编辑 / 删除），并携带 owner（清单里每条订单都显示录入者）。
-    // 注：「客户列表」只决定权限1「添加订单」是否生效（有客户才显示录入区），与可见范围无关。
+    // 注：「可录入订单客户列表」只决定权限1「添加订单」是否生效（有客户才显示录入区），与可见范围无关。
     if (isMemberRole(user.role) && !canViewAllTeamOrders(user)) {
+      // 「是否可查看全部订单」= 否：只能查看 ① 自己录入的订单 + ②「可查看订单客户列表」中客户的订单：
+      //   · 自己的订单可正常编辑 / 删除；
+      //   · ②的订单为**只读**（不能改状态 / 不能删除），但可追加备注（viewOnly 标记）；
+      //   · 「可查看订单客户列表」为空 → 只能查看自己录入的订单（与历史行为一致）。
       const own = await getTodos(env, user.username);
-      return json({
-        todos: own.map((t) => Object.assign({}, t, { owner: user.username })),
-        readonly: false,
-      });
+      const mine = own.map((t) => Object.assign({}, t, { owner: user.username }));
+      const names = await viewCustomerNamesOf(env, user);
+      if (!names.length) {
+        return json({ todos: mine, readonly: false });
+      }
+      const teamTodos = await getAllTodos(env, teamId, false);
+      const others = teamTodos
+        .filter(
+          (t) =>
+            t.owner !== user.username &&
+            names.indexOf(String(t.customer || "").trim()) !== -1
+        )
+        .map((t) => Object.assign({}, t, { viewOnly: true }));
+      const todos = mine.concat(others);
+      todos.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+      return json({ todos, readonly: false, allUsers: true });
     }
     if (isMemberRole(user.role)) {
       return json({
@@ -3338,7 +3516,7 @@ async function handleApi(request, env, pathname) {
         return json(
           {
             error:
-              "暂无客户，请联系团队管理员在「成员管理」的「客户列表」中为你添加客户（有客户即可添加订单）",
+              "暂无客户，请联系团队管理员在「成员管理」的「可录入订单客户列表」中为你添加客户（有客户即可添加订单）",
           },
           403
         );
@@ -3436,7 +3614,8 @@ async function handleApi(request, env, pathname) {
     //   观察类用户（业务主管 / 生产部 / 生产方 / 客户）、团队管理员 / 总经理 / 部门主管
     //   （及权限5 = 有 的成员），以及「是否可查看全部订单」= 是（默认）的普通成员
     //   （其订单列表显示本团队全部订单：只读但可追加备注）；
-    // 「是否可查看全部订单」= 否 的普通成员只看得见自己的订单，仅能对自己的待办添加备注。
+    // 「是否可查看全部订单」= 否 的普通成员：仅能对 ①自己的待办 与
+    //   ②「可查看订单客户列表」中客户（即其清单里可见）的订单添加备注。
     let owner = user.username;
     if (canNoteOthersTodos(user)) {
       const requested = body.owner || user.username;
@@ -3447,7 +3626,10 @@ async function handleApi(request, env, pathname) {
       }
       owner = requested;
     } else if (body.owner && body.owner !== user.username) {
-      return json({ error: "无权操作该用户的待办" }, 403);
+      // 普通成员（「是否可查看全部订单」= 否）：其清单里通过「可查看订单客户列表」可见的他人订单也允许追加备注
+      const allowed = await canNoteVisibleOrderForMember(env, user, body.owner, id);
+      if (!allowed) return json({ error: "无权操作该用户的待办" }, 403);
+      owner = body.owner;
     }
 
     const todos = await getTodos(env, owner);
@@ -3824,7 +4006,11 @@ export default {
       const canPlaceOrder = user ? await canAddOrderNow(env, user) : false;
       // 左上角名称（所属团队名 / 全局网站名）同样在服务端确定：避免先闪一下默认站名再变成团队名
       const siteName = await pageSiteName(env, user, g);
-      return new Response(todoPage(g.favicon, canPlaceOrder, siteName), {
+      // 试用版（未订阅 / 订阅已到期）页面顶部显示「广告位」：广告代码由超级管理员在控制台
+      // 「系统设置」中维护；订阅为专业版后不再输出（广告位随之消失）。
+      const pro = user ? await isProTeamOf(env, user) : false;
+      const adCode = !pro ? g.adCode : "";
+      return new Response(todoPage(g.favicon, canPlaceOrder, siteName, adCode), {
         headers: { "Content-Type": "text/html; charset=utf-8" },
       });
     }
