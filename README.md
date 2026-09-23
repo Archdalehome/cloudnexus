@@ -406,18 +406,32 @@ npm run deploy
 
 部署成功后会得到一个 `https://cf-todolist.<你的子域>.workers.dev` 地址，直接访问即可。
 
+> ✅ **这种方式（命令行）每次部署都会用最新的 `src/index.js` 现场打包上传**，不需要手动构建；
+> 只有下面「方式二：手动上传」才需要先构建产物。
+
 ### 7. 方式二：手动上传（不用命令行）
 
 适合不想装 wrangler / 没有本地 Node 环境，直接在 Cloudflare 控制台里粘贴代码的情况。
 
-**① 先把两个源文件压成一个文件**（控制台编辑器只接受单文件）：
+> ⚠️ **采用本方式时，每次改完代码都必须重新构建一次 `dist/worker.js`** ——
+> 否则控制台里粘贴的仍是**旧产物**，表现就是「明明改了代码、页面却没有任何变化」
+> （例如权限设置里还是旧的勾选框、看不到新增的客户列表区块等）。
+> 重新构建后**必须重新粘贴一次**并 `Save and Deploy`；浏览器端请**强制刷新**（`Ctrl/Cmd + Shift + R`）后查看。
+
+**① 把两个源文件压成一个文件**（控制台编辑器只接受单文件）：
 
 ```bash
-npx --yes esbuild@0.24.0 src/index.js --bundle --format=esm --target=es2022 --minify --charset=utf8 --legal-comments=none --external:cloudflare:sockets --outfile=dist/worker.js
+npm run build:dist
 ```
 
-生成 `dist/worker.js`（约 240KB，单文件 ES Module；`--charset=utf8` 保留中文不转义，否则体积会翻倍；
+（等价命令：`npx --yes esbuild@0.24.0 src/index.js --bundle --format=esm --target=es2022 --minify --charset=utf8 --legal-comments=none --external:cloudflare:sockets --outfile=dist/worker.js`）
+
+生成 `dist/worker.js`（约 280KB，单文件 ES Module；`--charset=utf8` 保留中文不转义，否则体积会翻倍；
 `--external:cloudflare:sockets` 必须保留 —— QQ 邮箱 SMTP 发信要用 Workers 内置的 TCP Socket 模块）。
+
+> 🔍 **上传前可自查产物是否为目标版本**（在 `dist/worker.js` 里搜索关键字）：
+> 应能搜到「**可查看客户列表**」「**view-customers**」，且**搜不到**「**data-canviewallorders**」
+> （后者是旧版「是否可查看全部订单」勾选框的痕迹，搜到说明产物是旧的）。
 
 **② 控制台创建 KV 命名空间**：`Storage & Databases` → `KV` → `Create namespace`（名称如 `TODOLIST_KV`）→ 记下 **Namespace ID**。
 
