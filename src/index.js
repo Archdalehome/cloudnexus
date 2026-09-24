@@ -1126,7 +1126,8 @@ async function listUsers(env, teamId) {
         canViewCustomerOrder: canViewCustomerOrder(u),
         // 权限4「是否可以查看生产订单」（点「自产单 / 外购单」打开采购文件链接）
         canViewPurchaseOrder: canViewPurchaseOrder(u),
-        // 权限5「是否可以更新订单状态」（= 有 时订单列表与团队管理员相同）
+        // 权限5「是否可以更新订单状态」（= 有 时在**可见范围内**拥有与团队管理员相同的操作能力；
+        //   注意：**不会扩大可见范围** —— 可见范围仍由「是否可查看全部订单 / 可查看客户列表」决定）
         canUpdateStatus: canUpdateOrderStatus(u),
         // 权限「是否可查看全部订单」（普通成员，**自动**：清单为空=是；选择了 N 个客户=否）
         canViewAllOrders: canViewAllTeamOrders(u),
@@ -1544,9 +1545,11 @@ function canManageTodos(role) {
 }
 
 // 权限5「是否可以更新订单状态」（普通成员，默认「无」）：
-//   = 有 时该成员的**订单列表显示与功能与团队管理员完全相同** —— 可见本团队全部订单（含待确认）、
+//   = 有 时该成员在**自己可见的订单范围内**拥有与团队管理员相同的操作能力 ——
 //   可改变订单状态、指定生产方、修改「待确认」订单（PO#/交期/金额/文件链接）、删除订单、添加备注，
 //   且订单号 PO# 与「自产单 / 外购单」标签可点击（等同于同时具备权限2 / 权限3 / 权限4）。
+//   ⚠️ **该权限不会扩大可见范围**：能看到的订单仍由「是否可查看全部订单 / 可查看客户列表」决定
+//      （「可查看客户列表」中选定了客户 → 只看得见自己录入的订单 + 这些客户的订单）。
 function canUpdateOrderStatus(user) {
   if (!user) return false;
   if (isTeamAdmin(user.role)) return true;
@@ -1582,6 +1585,7 @@ function canChangeTodoStatus(user) {
 
 // 可操作**他人**待办（改变状态 / 指定生产方 / 修改待确认待办 / 删除 / 添加备注）：
 //   团队管理员 / 总经理 / 部门主管（历史账号），以及权限5 = 有 的普通成员
+//   （注：权限5 成员只能在「自己可见的订单范围」内操作 —— 可见范围见 canViewAllTeamOrders）
 function canManageOthersTodos(user) {
   if (!user) return false;
   if (canManageTodos(user.role)) return true;
@@ -1991,7 +1995,8 @@ async function handleApi(request, env, pathname) {
     info.canViewCustomerOrder = canViewCustomerOrder(user);
     // 权限4「是否可以查看生产订单」（点「外购单 / 自产单」打开采购文件链接）
     info.canViewPurchaseOrder = canViewPurchaseOrder(user);
-    // 权限5「是否可以更新订单状态」= 有 时，订单列表显示与功能与团队管理员相同
+    // 权限5「是否可以更新订单状态」= 有 时，在该成员**可见范围内**拥有与团队管理员相同的操作能力
+    //（注意：该权限不会扩大可见范围，可见范围仍由「是否可查看全部订单 / 可查看客户列表」决定）
     info.canUpdateStatus = canUpdateOrderStatus(user);
     // 权限「是否可查看全部订单」（普通成员，**自动**）：与「可查看客户列表」对齐后再判定 ——
     // 列表为空 = 是（可见本团队全部订单，只读可备注）；选择了 N 个客户 = 否（可见这些客户的订单）
@@ -2778,9 +2783,11 @@ async function handleApi(request, env, pathname) {
   //     canPurchase             权限3「是否可以下生产订单」（点黄色「自产单 / 外购单」补填采购文件链接）
   //     canViewCustomerOrder    权限2「是否可以查看客户订单」（点订单号 PO# 打开订单文件链接）
   //     canViewPurchaseOrder    权限4「是否可以查看生产订单」（点「外购单 / 自产单」打开采购文件链接）
-  //     canUpdateStatus         权限5「是否可以更新订单状态」（= 有 时订单列表显示与功能与团队管理员相同：
-  //                             可见全部订单、可改状态 / 指定生产方 / 修改待确认订单 / 删除 / 备注，
-  //                             且订单号与「自产单 / 外购单」标签可点击）
+  //     canUpdateStatus         权限5「是否可以更新订单状态」（= 有 时在该成员**可见范围内**拥有与
+  //                             团队管理员相同的操作能力：可改状态 / 指定生产方 / 修改待确认订单 /
+  //                             删除 / 备注，且订单号与「自产单 / 外购单」标签可点击；
+  //                             ⚠️ **不会扩大可见范围** —— 可见范围仍由「是否可查看全部订单 /
+  //                             可查看客户列表」决定）
   //     canViewAllOrders        「是否可查看全部订单」为**自动**权限（与权限1「添加订单」相同，
   //                             不需要手动勾选）：由「可查看客户列表」（/api/view-customers/）自动决定 ——
   //                             列表为空 = 是（可查看本团队全部订单）；选择了 N 个客户 = 否（可查看 N 个客户）。
@@ -3534,15 +3541,10 @@ async function handleApi(request, env, pathname) {
     const user = await getCurrentUser(request, env);
     if (!user) return json({ error: "未登录" }, 401);
     const teamId = teamIdOf(user);
-    // 权限5「是否可以更新订单状态」= 有 的普通成员：订单列表显示与功能与团队管理员相同
-    //（可见本团队全部订单，含待确认；状态可改、可指定生产方、可修改待确认订单、可删除、可备注）
-    if (isMemberRole(user.role) && canUpdateOrderStatus(user)) {
-      return json({
-        todos: await getAllTodos(env, teamId, false),
-        readonly: false,
-        allUsers: true,
-      });
-    }
+    // 注：权限5「是否可以更新订单状态」**不会扩大可见范围** ——
+    // 可见范围只由「是否可查看全部订单 / 可查看客户列表」决定（见下方普通成员分支）；
+    // 权限5 只是在**该可见范围内**提供与团队管理员相同的操作能力（改状态 / 指定生产方 /
+    // 修改「待确认」订单 / 删除 / 备注）。因此这里不再为权限5 单独返回全部订单。
     // 团队管理员 / 总经理：可查看本团队所有用户的待办（含待确认）
     if (canManageTodos(user.role)) {
       return json({
@@ -3589,17 +3591,20 @@ async function handleApi(request, env, pathname) {
       });
     }
     // 普通成员（原业务部）的订单可见范围由**自动**权限「是否可查看全部订单」决定
-    //（该权限与「可查看客户列表」自动对齐：列表为空 = 是；选择了 N 个客户 = 否）：
+    //（该权限与「可查看客户列表」自动对齐：列表为空 = 是；选择了 N 个客户 = 否）；
+    // **权限5「是否可以更新订单状态」不影响可见范围**（只影响可见范围内的操作能力）：
     //   · 是（默认）：可**查看本团队全部订单**（只读 —— 不能改状态、不能指定生产方、
     //     不能删除他人的订单）；**备注为追加式**：可为清单里的任意订单（含他人录入的）添加备注；
     //   · 否：只返回 **自己的订单** 与 **「可查看客户列表」中客户的订单**（可正常编辑自己的、可为他人的追加备注）。
     // 注：「可录入订单客户列表」只决定权限1「添加订单」是否生效（有客户才显示录入区），与可见范围无关。
     if (isMemberRole(user.role)) await syncMemberOrderScope(env, user);
     if (isMemberRole(user.role) && !canViewAllTeamOrders(user)) {
-      // 「是否可查看全部订单」= 否：只能查看 ① 自己录入的订单 + ②「可查看客户列表」中客户的订单：
+      // 「是否可查看全部订单」= 否（已在「可查看客户列表」中选定了客户）：只能查看
+      //   ① 自己录入的订单 + ② 这 N 个客户的订单（本团队、含待确认）：
       //   · 自己的订单可正常编辑 / 删除；
-      //   · ②的订单为**只读**（不能改状态 / 不能删除），但可追加备注（viewOnly 标记）；
-      //   · 「可查看客户列表」为空 → 只能查看自己录入的订单（与历史行为一致）。
+      //   · ②的订单：权限5 = 无 时为**只读**（viewOnly：不能改状态 / 不能删除，但可追加备注）；
+      //     权限5 = 有 时可在该可见范围内正常管理（改状态 / 指定生产方 / 修改待确认订单 / 删除）。
+      const canManageVisibleOthers = canManageOthersTodos(user);
       const own = await getTodos(env, user.username);
       const mine = own.map((t) => Object.assign({}, t, { owner: user.username }));
       const names = await viewCustomerNamesOf(env, user);
@@ -3613,7 +3618,9 @@ async function handleApi(request, env, pathname) {
             t.owner !== user.username &&
             names.indexOf(String(t.customer || "").trim()) !== -1
         )
-        .map((t) => Object.assign({}, t, { viewOnly: true }));
+        .map((t) =>
+          canManageVisibleOthers ? Object.assign({}, t) : Object.assign({}, t, { viewOnly: true })
+        );
       const todos = mine.concat(others);
       todos.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
       return json({ todos, readonly: false, allUsers: true });

@@ -1867,7 +1867,7 @@ ${adBlock}
         <input type="text" id="newUserName" placeholder="用户名" style="margin-bottom:8px">
         <input type="password" id="newUserPwd" placeholder="密码" style="margin-bottom:8px">
         <input type="text" id="newUserPosition" placeholder="职位（手动输入，如：业务员 / 采购 / 主管）" maxlength="20" style="width:100%;padding:9px 12px;border:1px solid #e0e0dc;border-radius:6px;font-size:14px;background:#fff;color:#37352f;outline:none">
-        <div class="order-perm-hint" style="margin-top:6px">新增成员统一为普通成员：权限1「添加订单」自动（在下方「可录入订单客户列表」中分配客户后即可录入订单）；「是否可查看全部订单」也**自动**（默认「是」= 可查看本团队全部订单；在下方「可查看客户列表」中选择 N 个客户后自动变为「否」= 可查看 N 个客户）；「可选生产方」默认「无」（在下方「可选生产方列表」中授权后，该成员录单时可指定这些生产方）/ 权限2「查看客户订单」/ 权限3「下生产订单」/ 权限4「查看生产订单」/ 权限5「更新订单状态」（= 是 时订单列表与团队管理员相同）/ 权限6「下脱敏订单」（= 是 时可点击订单号右侧的「回形针」补填脱敏订单文件链接，**默认「无」**）/ 权限7「添加出货日期」（= 是 时可点击「交期」右侧的灰色空白区块添加出货日期，**默认「无」**）在下方成员列表中逐个设置</div>
+        <div class="order-perm-hint" style="margin-top:6px">新增成员统一为普通成员：权限1「添加订单」自动（在下方「可录入订单客户列表」中分配客户后即可录入订单）；「是否可查看全部订单」也**自动**（默认「是」= 可查看本团队全部订单；在下方「可查看客户列表」中选择 N 个客户后自动变为「否」= 可查看 N 个客户）；「可选生产方」默认「无」（在下方「可选生产方列表」中授权后，该成员录单时可指定这些生产方）/ 权限2「查看客户订单」/ 权限3「下生产订单」/ 权限4「查看生产订单」/ 权限5「更新订单状态」（= 是 时在**可见范围内**与团队管理员相同：可改状态 / 指定生产方 / 修改待确认订单 / 删除；**不会扩大可见范围**）/ 权限6「下脱敏订单」（= 是 时可点击订单号右侧的「回形针」补填脱敏订单文件链接，**默认「无」**）/ 权限7「添加出货日期」（= 是 时可点击「交期」右侧的灰色空白区块添加出货日期，**默认「无」**）在下方成员列表中逐个设置</div>
       </div>
       <button class="btn-primary-sm" id="btnAddUser" style="width:100%">添加成员</button>
       <div class="msg" id="userMsg"></div>
@@ -2295,7 +2295,8 @@ ${adBlock}
     teamIsPro = isTeamAdmin ? isProTeam : !!currentUser.teamPro;
     isSuperviewer = currentUser.role === 'superviewer';
     isDeptManager = currentUser.role === 'deptmanager';
-    // 权限5「是否可以更新订单状态」= 有 的普通成员：订单列表显示与功能与团队管理员相同
+    // 权限5「是否可以更新订单状态」= 有 的普通成员：在**自己可见的订单范围内**拥有与团队管理员相同的操作能力
+    //（注意：该权限不扩大可见范围 —— 可见范围由服务端按「是否可查看全部订单 / 可查看客户列表」返回）
     const isStatusUpdater = !!currentUser.canUpdateStatus &&
       (currentUser.role === 'editor' || currentUser.role === 'member');
     isTodoManager = isTeamAdmin || isSuperviewer || isDeptManager || isStatusUpdater;
@@ -4074,9 +4075,9 @@ ${adBlock}
               permToggle('data-canpurchase', '是否可以下生产订单', u.canPurchase === true, '是', '否') +
               permToggle('data-canviewpurchase', '是否可以查看生产订单', u.canViewPurchaseOrder === true, '是', '否') +
               permToggle('data-canupdatestatus', '是否可以更新订单状态', u.canUpdateStatus === true, '是', '否',
-                '「是否可以更新订单状态」= 是 时，该成员的订单列表显示与功能与团队管理员完全相同：' +
-                '可见本团队全部订单（含待确认），可改变状态 / 指定生产方 / 修改「待确认」订单 / 删除 / 添加备注，' +
-                '且订单号与「自产单 / 外购单」标签可点击（默认「否」）') +
+                '「是否可以更新订单状态」= 是 时，该成员在**自己可见的订单范围内**拥有与团队管理员相同的操作能力：' +
+                '可改变状态 / 指定生产方 / 修改「待确认」订单 / 删除 / 添加备注，且订单号与「自产单 / 外购单」标签可点击；' +
+                '**注意：该权限不会扩大可见范围** —— 能看到的订单仍由「是否可查看全部订单 / 可查看客户列表」决定（默认「否」）') +
               permToggle('data-canmaskedorder', '是否可以下脱敏订单', u.canPlaceMaskedOrder === true, '是', '否',
                 '「是否可以下脱敏订单」= 是 时，该成员可点击订单列表中**订单号右侧的「回形针」**图标' +
                 '添加脱敏订单文件链接（默认「否」；已有链接时该图标只用于打开链接，不能再添加）') +
@@ -4168,7 +4169,7 @@ ${adBlock}
       // 成员备注（点文字直接修改）
       bindDescEditors(list, () => loadUsers());
       // 权限开关（勾选后立即保存）：权限2 查看客户订单 / 权限3 下生产订单 / 权限4 查看生产订单 /
-      // 权限5 更新订单状态（= 有 时订单列表与团队管理员相同）/
+      // 权限5 更新订单状态（= 是 时在可见范围内与团队管理员相同；**不会扩大可见范围**）/
       // 权限6 下脱敏订单（= 是 时可点击订单号右侧的「回形针」补填脱敏订单文件链接，默认「无」）/
       // 权限7 添加出货日期（= 是 时可点击「交期」右侧的灰色空白区块添加出货日期，默认「无」）；
       // 注：权限1「添加订单」与「是否可查看全部订单」都是**自动**权限（无勾选框，只显示状态）——
