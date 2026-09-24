@@ -2276,13 +2276,13 @@ ${adBlock}
     }
   }
 
-  // ---------- 初始化 ----------
-  async function init() {
-    try {
-      currentUser = await api('/api/me');
-    } catch (e) { return; }
-    // 超级管理员不使用业务页面，直接进入「团队用户管理」控制台
-    if (currentUser.role === 'superadmin') { location.href = '/admin'; return; }
+  // ---------- 依据 /api/me 的最新结果同步「权限标记」 ----------
+  // 说明：管理员在「成员管理」里改动某个成员的权限（如权限5「是否可以更新订单状态」、
+  //       「可选生产方」授权、客户可见范围等）后，**该成员无需重新登录**：
+  //       · 页面重新加载 / 列表刷新时会重新拉取 /api/me 并立即生效；
+  //       · 页面停留时每 60 秒自动同步一次（切回本标签页也会立即同步一次）。
+  function applyUserFlags(me) {
+    if (me) currentUser = me;
     isViewer = currentUser.role === 'viewer';
     isRestricted = currentUser.role === 'restricted';
     isProducer = currentUser.role === 'producer';
@@ -2306,10 +2306,14 @@ ${adBlock}
     // 注：普通成员（editor / member）只能看到自己的订单，因此不在此列。
     showAllUsers = isTodoManager || isObserver;
     document.getElementById('currentUser').textContent = currentUser.username;
-
+    // 「是否可查看全部订单」（自动权限）：= 是 → 可见本团队全部订单
+    canViewAllOrders = (currentUser.role === 'editor' || currentUser.role === 'member') &&
+      currentUser.canViewAllOrders !== false;
     // 录入区「生产方选择」下拉：权限「可选生产方」被授权后显示（默认「无」= 不显示）
     setupProducerSelect();
-
+    // 「添加新订单」录入区（录单权限）：服务端已按权限渲染，这里再按 /api/me 的最新结果同步（兜底）
+    const addRowEl = document.querySelector('.add-row');
+    if (addRowEl) addRowEl.style.display = currentUser.canPlaceOrder ? '' : 'none';
     if (isTeamAdmin) {
       // 「团队设置」（团队名称）对团队账号（含试用）开放
       document.getElementById('btnSettings').style.display = '';
@@ -2319,26 +2323,60 @@ ${adBlock}
       document.getElementById('btnProducers').style.display = '';
       document.getElementById('btnCustomers').style.display = '';
     }
-    // 顶栏团队徽章：团队账号显示「试用（无期限）/ 专业版有效期」，成员显示所属团队
+    // 顶栏团队徽章与「订阅 / 续费」按钮
     renderTeamBadge();
+    updateSubscribeButton();
+  }
+
+  // 重新拉取 /api/me 并同步权限标记；权限有变化时返回 true（调用方可据此重新渲染列表）
+  async function refreshMe() {
+    let me;
+    try {
+      me = await api('/api/me');
+    } catch (e) { return false; }
+    // 关键权限项是否变化（变了才需要重新拉列表，避免无谓请求）
+    const changed =
+      !!me.canUpdateStatus !== !!currentUser.canUpdateStatus ||
+      (me.canViewAllOrders !== false) !== (currentUser.canViewAllOrders !== false) ||
+      !!me.canPlaceOrder !== !!currentUser.canPlaceOrder ||
+      JSON.stringify(me.orderProducers || []) !== JSON.stringify(currentUser.orderProducers || []) ||
+      !!me.canPlaceMaskedOrder !== !!currentUser.canPlaceMaskedOrder ||
+      !!me.canAddShipDate !== !!currentUser.canAddShipDate ||
+      (me.teamPro !== undefined && !!me.teamPro !== !!currentUser.teamPro);
+    applyUserFlags(me);
+    return changed;
+  }
+
+  // 定时 / 切回标签页时自动同步权限（管理员改动权限后，成员端最多 1 分钟自动生效）
+  async function syncPermsAndRender() {
+    const changed = await refreshMe();
+    if (changed) {
+      try { await loadTodos(); return; } catch (e) { /* 忽略：保持当前列表 */ }
+    }
+    render();
+  }
+
+  // ---------- 初始化 ----------
+  async function init() {
+    try {
+      currentUser = await api('/api/me');
+    } catch (e) { return; }
+    // 超级管理员不使用业务页面，直接进入「团队用户管理」控制台
+    if (currentUser.role === 'superadmin') { location.href = '/admin'; return; }
+
+    // 依据 /api/me 同步全部权限标记（顶栏徽章 / 录入区 / 状态下拉等）
+    applyUserFlags();
+
     // 站内消息：顶栏登录名左侧的角标（未读 > 0 红色 / = 0 但有历史提醒时灰色「0」），并每 60 秒刷新一次
     setMentionBadge(currentUser.mentionsUnread || 0, currentUser.mentionsTotal || 0);
     setInterval(loadMentions, 60000);
+    // 权限自动同步：每 60 秒 + 从其他标签页切回时（管理员改动权限后无需重新登录/手动刷新）
+    setInterval(syncPermsAndRender, 60000);
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) syncPermsAndRender();
+    });
     // 预加载生产方列表：团队管理员/总经理的下拉需要，其他角色也会用它兜底显示待办卡片上的生产方简称
     await ensureProducers();
-    // 普通成员（原业务部）的新权限「是否可查看全部订单」（**默认「是」**）：= 是 → 清单显示
-    // 本团队全部订单（他人录入的订单为只读：不能改状态 / 不能删除，但可添加备注）；= 否 → 只看自己的
-    // 注：与「客户列表」无关（客户只决定「添加新订单」录入区是否显示）
-    canViewAllOrders = (currentUser.role === 'editor' || currentUser.role === 'member') &&
-      currentUser.canViewAllOrders !== false;
-    // 「添加新订单」录入区（录单权限）：
-    //   · 服务端渲染时已按权限决定是否输出 display:none —— 无录单权限的用户（专业版团队管理员 /
-    //     无客户的成员 / 观察类等）登录瞬间**不会再闪现**录入框；
-    //   · 这里再按 /api/me 的最新结果同步一次，作为兜底（权限刚变更 / 页面被缓存等情况）。
-    const addRowEl = document.querySelector('.add-row');
-    if (addRowEl) {
-      addRowEl.style.display = currentUser.canPlaceOrder ? '' : 'none';
-    }
 
     // 日期框：自绘 yyyy/mm/dd 提示
     bindDateFields();
@@ -3575,7 +3613,10 @@ ${adBlock}
   async function openProducerPick(t, selectEl) {
     const producers = await ensureProducers();
     if (!producers.length) {
-      alert('还没有生产方，请先点击顶部「生产方管理」添加生产方');
+      // 团队里还没有任何生产方：成员自己没有「生产方管理」入口，提示其联系团队管理员
+      alert(isTeamAdmin || isSuperviewer || isDeptManager
+        ? '还没有生产方，请先点击顶部「生产方管理」添加生产方'
+        : '暂无生产方：请让团队管理员先在「生产方管理」中添加生产方，再把订单状态改为「进行中」');
       if (selectEl) selectEl.value = statusOf(t);
       return;
     }
@@ -4077,7 +4118,8 @@ ${adBlock}
               permToggle('data-canupdatestatus', '是否可以更新订单状态', u.canUpdateStatus === true, '是', '否',
                 '「是否可以更新订单状态」= 是 时，该成员在**自己可见的订单范围内**拥有与团队管理员相同的操作能力：' +
                 '可改变状态 / 指定生产方 / 修改「待确认」订单 / 删除 / 添加备注，且订单号与「自产单 / 外购单」标签可点击；' +
-                '**注意：该权限不会扩大可见范围** —— 能看到的订单仍由「是否可查看全部订单 / 可查看客户列表」决定（默认「否」）') +
+                '**注意：该权限不会扩大可见范围** —— 能看到的订单仍由「是否可查看全部订单 / 可查看客户列表」决定。' +
+                '改动后**该成员无需重新登录**：其页面每 60 秒自动生效（切回该页面或刷新页面时立即生效）；默认「否」') +
               permToggle('data-canmaskedorder', '是否可以下脱敏订单', u.canPlaceMaskedOrder === true, '是', '否',
                 '「是否可以下脱敏订单」= 是 时，该成员可点击订单列表中**订单号右侧的「回形针」**图标' +
                 '添加脱敏订单文件链接（默认「否」；已有链接时该图标只用于打开链接，不能再添加）') +
