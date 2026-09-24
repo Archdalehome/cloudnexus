@@ -744,6 +744,20 @@ ${commonStyle}
   .add-row input.title-input { flex: 0 1 132px; }
   /* 订单文件链接输入框：占更宽一些 */
   .add-row input.url-input { flex: 2 1 240px; }
+  /* 「生产方选择」下拉（订单文件链接右侧；权限「可选生产方」被授权后才显示） */
+  .add-row select.producer-select-new {
+    flex: 0 1 150px;
+    min-width: 0;
+    padding: 12px 10px;
+    font-size: 14px;
+    border: 1px solid #e0e0dc;
+    border-radius: 6px;
+    background: #fff;
+    color: #37352f;
+    outline: none;
+    cursor: pointer;
+  }
+  .add-row select.producer-select-new:focus { border-color: #2383e2; }
   /* 币种下拉（美元 / 人民币）：位于交期与金额之间 */
   .currency-select {
     padding: 12px 10px;
@@ -1559,6 +1573,11 @@ ${commonStyle}
   }
   .customer-chip.view-chip { background: #f1f1ef; color: #6b6b68; }
   .customer-chip.view-chip .customer-chip-del { color: #6b6b68; }
+  /* 「可选生产方列表」（成员权限「可选生产方」，默认「无」） */
+  .customer-manage.order-producer-manage { background: #fbfbfa; }
+  .customer-manage.order-producer-manage .customer-manage-title { color: #6b6b68; }
+  .customer-chip.order-producer-chip { background: #eef4ee; color: #0f7b6c; }
+  .customer-chip.order-producer-chip .customer-chip-del { color: #0f7b6c; }
   .customer-add-row { display: flex; gap: 8px; }
   .customer-add-input {
     flex: 1;
@@ -1721,6 +1740,7 @@ ${commonStyle}
     .add-row input.url-input { flex: 1 1 100%; }
     .add-row .currency-select { flex: 0 0 42%; max-width: 42%; }
     .add-row .amount-input { flex: 1 1 auto; max-width: none; }
+    .add-row select.producer-select-new { flex: 1 1 100%; max-width: 100%; }
     .add-row .btn-add { flex: 1 1 100%; padding: 12px 18px; }
 
     /* 订单行：留白与展开区缩进收紧，把宽度留给 PO# 与标签 */
@@ -1806,6 +1826,9 @@ ${adBlock}
       </select>
       <input type="number" id="newAmount" class="amount-input" placeholder="金额" min="0" step="0.01">
       <input type="url" id="newOrderUrl" class="url-input" placeholder="订单文件链接 http://…" maxlength="500">
+      <!-- 生产方选择（权限「可选生产方」被授权后才显示：用于给本订单指定生产方；默认「无」= 隐藏） -->
+      <select id="newProducer" class="producer-select-new" style="display:none"
+        title="给本订单指定生产方（由团队管理员在「成员管理」的「可选生产方列表」中授权，默认「无」）"></select>
       <button class="btn-add" id="btnAdd">添加</button>
     </div>
     <div id="listArea"></div>
@@ -1844,7 +1867,7 @@ ${adBlock}
         <input type="text" id="newUserName" placeholder="用户名" style="margin-bottom:8px">
         <input type="password" id="newUserPwd" placeholder="密码" style="margin-bottom:8px">
         <input type="text" id="newUserPosition" placeholder="职位（手动输入，如：业务员 / 采购 / 主管）" maxlength="20" style="width:100%;padding:9px 12px;border:1px solid #e0e0dc;border-radius:6px;font-size:14px;background:#fff;color:#37352f;outline:none">
-        <div class="order-perm-hint" style="margin-top:6px">新增成员统一为普通成员：权限1「添加订单」自动（在下方「可录入订单客户列表」中分配客户后即可录入订单）；「是否可查看全部订单」也**自动**（默认「是」= 可查看本团队全部订单；在下方「可查看客户列表」中选择 N 个客户后自动变为「否」= 可查看 N 个客户）/ 权限2「查看客户订单」/ 权限3「下生产订单」/ 权限4「查看生产订单」/ 权限5「更新订单状态」（= 是 时订单列表与团队管理员相同）/ 权限6「下脱敏订单」（= 是 时可点击订单号右侧的「回形针」补填脱敏订单文件链接，**默认「无」**）/ 权限7「添加出货日期」（= 是 时可点击「交期」右侧的灰色空白区块添加出货日期，**默认「无」**）在下方成员列表中逐个设置</div>
+        <div class="order-perm-hint" style="margin-top:6px">新增成员统一为普通成员：权限1「添加订单」自动（在下方「可录入订单客户列表」中分配客户后即可录入订单）；「是否可查看全部订单」也**自动**（默认「是」= 可查看本团队全部订单；在下方「可查看客户列表」中选择 N 个客户后自动变为「否」= 可查看 N 个客户）；「可选生产方」默认「无」（在下方「可选生产方列表」中授权后，该成员录单时可指定这些生产方）/ 权限2「查看客户订单」/ 权限3「下生产订单」/ 权限4「查看生产订单」/ 权限5「更新订单状态」（= 是 时订单列表与团队管理员相同）/ 权限6「下脱敏订单」（= 是 时可点击订单号右侧的「回形针」补填脱敏订单文件链接，**默认「无」**）/ 权限7「添加出货日期」（= 是 时可点击「交期」右侧的灰色空白区块添加出货日期，**默认「无」**）在下方成员列表中逐个设置</div>
       </div>
       <button class="btn-primary-sm" id="btnAddUser" style="width:100%">添加成员</button>
       <div class="msg" id="userMsg"></div>
@@ -2283,6 +2306,9 @@ ${adBlock}
     showAllUsers = isTodoManager || isObserver;
     document.getElementById('currentUser').textContent = currentUser.username;
 
+    // 录入区「生产方选择」下拉：权限「可选生产方」被授权后显示（默认「无」= 不显示）
+    setupProducerSelect();
+
     if (isTeamAdmin) {
       // 「团队设置」（团队名称）对团队账号（含试用）开放
       document.getElementById('btnSettings').style.display = '';
@@ -2390,6 +2416,26 @@ ${adBlock}
   //   业务部等成员为「客户下拉」——选项即其「可录入订单客户列表」中自己被分配的客户；
   //   团队账号本人（团队管理员）固定不录入订单（试用版与专业版一致），因此录入区整体不显示，
   //   此处不再做任何替换。
+
+  // 录入区的「生产方选择」下拉（位于「订单文件链接」右侧）：
+  //   权限「可选生产方」被授权后才显示（默认「无」= 不显示）——选项只列出该成员被授权的生产方，
+  //   录单时可直接为订单指定生产方；不选择（首项「不指定生产方」）则不指定，之后仍可由团队管理员指定。
+  function setupProducerSelect() {
+    const sel = document.getElementById('newProducer');
+    if (!sel) return;
+    const list = Array.isArray(currentUser.orderProducers) ? currentUser.orderProducers : [];
+    if (!list.length) {
+      sel.innerHTML = '';
+      sel.style.display = 'none';
+      return;
+    }
+    sel.innerHTML = '<option value="">不指定生产方</option>' +
+      list.map(p => '<option value="' + esc(p.id) + '">' + esc(p.username) +
+        (p.nature === 'purchased' ? '（外购）' : '（自产）') + '</option>').join('');
+    const names = list.map(p => p.username).join('、');
+    sel.title = '给本订单指定生产方（已授权 ' + list.length + ' 个：' + names + '）';
+    sel.style.display = '';
+  }
 
   // 距到期天数（向上取整；已过期返回负数）
   function daysLeft(iso) {
@@ -3341,7 +3387,8 @@ ${adBlock}
   }
 
   // ---------- 添加待办 ----------
-  // 客户：试用团队账号为手工填写的名称（后端自动记入客户列表）；其他角色为下拉选择
+  // 客户：团队成员从自己「可录入订单客户列表」中选择；
+  // 「生产方选择」：仅权限「可选生产方」被授权的成员才显示（可选，用于给本订单指定生产方）
   async function addTodo() {
     const input = document.getElementById('newTitle');
     const customerEl = document.getElementById('newCustomer');
@@ -3349,12 +3396,17 @@ ${adBlock}
     const amountInput = document.getElementById('newAmount');
     const urlInput = document.getElementById('newOrderUrl');
     const currencyEl = document.getElementById('newCurrency');
+    const producerEl = document.getElementById('newProducer');
     const title = input.value.trim();
     const customer = (customerEl.value || '').trim();
     const dueDate = dueInput.value;
     const amount = amountInput.value;
     const orderUrl = urlInput.value.trim();
     const currency = currencyEl ? currencyEl.value : 'USD';
+    // 生产方（可选）：下拉未显示（未授权「可选生产方」）时不提交该字段
+    const producerId = producerEl && producerEl.style.display !== 'none'
+      ? producerEl.value
+      : '';
     if (!customer) { alert('请选择客户'); return; }
     if (!title) { alert('请输入主题'); return; }
     if (!dueDate) { alert('请选择交期'); return; }
@@ -3368,7 +3420,7 @@ ${adBlock}
       const data = await api('/api/todos', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, customer, dueDate, amount, orderUrl, currency }),
+        body: JSON.stringify({ title, customer, dueDate, amount, orderUrl, currency, producerId }),
       });
       todos.unshift(data.todo);
       input.value = '';
@@ -3378,6 +3430,8 @@ ${adBlock}
       amountInput.value = '';
       urlInput.value = '';
       if (currencyEl) currencyEl.value = 'USD';
+      // 生产方选择恢复为「不指定生产方」（下次录单默认不指定）
+      if (producerEl) producerEl.value = '';
       render();
     } catch (err) { alert(err.message); }
   }
@@ -3827,6 +3881,43 @@ ${adBlock}
       '</div>';
   }
 
+  // 成员权限「可选生产方」（**默认「无」**）：「可选生产方列表」区块（成员管理弹窗内）
+  //   在此为该成员授权生产方 → 该成员录单时会看到「生产方选择」下拉（只列出已授权的生产方）；
+  //   未授权时录单区不显示该下拉，接口也不允许成员指定生产方。
+  function buildOrderProducerBlock(u, producers) {
+    const ids = Array.isArray(u.orderProducerIds) ? u.orderProducerIds : [];
+    const granted = ids.map(id => {
+      const p = producers.find(x => x.id === id);
+      return p || { id: id, username: '（已删除的生产方）', deleted: true };
+    });
+    const chips = granted.length
+      ? granted.map(p =>
+          '<span class="customer-chip order-producer-chip">' + esc(p.username) +
+          (p.deleted ? '' : (p.nature === 'purchased' ? '（外购）' : '（自产）')) +
+          '<span class="customer-chip-del" data-delorderproducer="' + esc(u.username) +
+          '" data-pid="' + esc(p.id) + '" title="取消授权（取消后该成员录单时不能再选择该生产方）">×</span></span>'
+        ).join('')
+      : '<span class="customer-empty">暂无授权（该成员录单时不能指定生产方）</span>';
+    const grantedIds = granted.map(p => p.id);
+    const available = producers.filter(p => grantedIds.indexOf(p.id) === -1);
+    const addRow = available.length
+      ? '<select class="customer-add-input order-producer-add-select"><option value="">选择生产方</option>' +
+        available.map(p => '<option value="' + esc(p.id) + '">' + esc(p.username) + '</option>').join('') +
+        '</select>' +
+        '<button class="btn-primary-sm" data-addorderproducer="' + esc(u.username) + '">添加生产方</button>'
+      : '<div class="customer-empty">' +
+        (producers.length ? '全部生产方都已授权' : '请先到顶部「生产方管理」添加生产方') +
+        '</div>';
+    return '<div class="customer-manage order-producer-manage" data-order-producer-manage="' +
+      esc(u.username) + '">' +
+      '<div class="customer-manage-title">可选生产方列表</div>' +
+      '<div class="customer-manage-hint">授权后该成员在订单录入区的「生产方选择」下拉中只会看到这些生产方，' +
+      '录单时可直接为订单指定生产方（默认「无」= 不显示该下拉）。</div>' +
+      '<div class="customer-list">' + chips + '</div>' +
+      '<div class="customer-add-row">' + addRow + '</div>' +
+      '</div>';
+  }
+
   document.getElementById('btnManageUsers').addEventListener('click', async () => {
     document.getElementById('userMsg').textContent = '';
     document.getElementById('usersModal').classList.add('show');
@@ -3912,6 +4003,9 @@ ${adBlock}
           customerBlock += buildViewCustomerBlock(
             u, customerList, viewCustomerMap[u.username] || []
           );
+          // 「可选生产方列表」：为成员授权「可选生产方」（默认「无」）——
+          // 授权后该成员录单时会显示「生产方选择」下拉，可直接为订单指定生产方
+          customerBlock += buildOrderProducerBlock(u, producers);
         }
         // 成员行右侧的权限开关（团队管理员在这里逐个设定各成员的具体权限）：
         //   · 普通成员（原业务部）：权限1「添加订单」自动（有客户即可添加订单，只显示状态）；
@@ -3946,6 +4040,9 @@ ${adBlock}
         const myViewCustomers = viewCustomerMap[u.username] || [];
         const viewCount = myViewCustomers.length;
         const canViewAllOrdersNow = u.canViewAllOrders !== false && viewCount === 0;
+        // 权限「可选生产方」（默认「无」）：已授权数量（在下方「可选生产方列表」中维护）
+        const orderProducerIds = Array.isArray(u.orderProducerIds) ? u.orderProducerIds : [];
+        const orderProducerCount = orderProducerIds.length;
         const orderPermBlock = noOrderPerm ? '' : (isMemberRow
           ? '<div class="order-perm-col">' +
               '<span class="order-perm-static" title="权限1「添加订单」自动生效：「可录入订单客户列表」里有客户 → 可录入订单（显示「添加新订单」录入区）；没有客户 → 权限为「无」、不显示录入区（与「查看全部订单」无关）">' +
@@ -3963,6 +4060,15 @@ ${adBlock}
                 (canViewAllOrdersNow
                   ? '（可查看全部订单）'
                   : '（可查看 ' + viewCount + ' 个客户）') +
+              '</span>' +
+              // 权限「可选生产方」（**默认「无」**）：在下方「可选生产方列表」中授权后显示「已授权 N 个生产方」
+              '<span class="order-perm-static" title="「可选生产方」默认「无」：在下方「可选生产方列表」中为该成员授权生产方后，' +
+                '该成员在订单录入区会看到「生产方选择」下拉（只列出已授权的生产方），录单时可直接为订单指定生产方；' +
+                '未授权（无）时该下拉不显示，接口也不允许成员指定生产方">' +
+                '可选生产方：<b>' + (orderProducerCount
+                  ? '已授权 ' + orderProducerCount + ' 个生产方'
+                  : '无') + '</b>' +
+                (orderProducerCount ? '' : '（录单时不能指定生产方）') +
               '</span>' +
               permToggle('data-canvieworder', '是否可以查看客户订单', u.canViewCustomerOrder === true, '是', '否') +
               permToggle('data-canpurchase', '是否可以下生产订单', u.canPurchase === true, '是', '否') +
@@ -4029,6 +4135,34 @@ ${adBlock}
           msg.className = 'msg';
           msg.textContent = '';
           document.getElementById('resetPwdModal').classList.add('show');
+        });
+      });
+      // 「可选生产方列表」：授权 / 取消授权（授权后该成员录单时可指定生产方）
+      list.querySelectorAll('[data-addorderproducer]').forEach(el => {
+        el.addEventListener('click', async () => {
+          const name = el.getAttribute('data-addorderproducer');
+          const block = el.closest('[data-order-producer-manage]');
+          const sel = block ? block.querySelector('.order-producer-add-select') : null;
+          if (!sel || !sel.value) { alert('请选择生产方'); return; }
+          try {
+            await api('/api/order-producers/' + encodeURIComponent(name), {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ producerId: sel.value }),
+            });
+            await loadUsers();
+          } catch (err) { alert(err.message); }
+        });
+      });
+      list.querySelectorAll('[data-delorderproducer]').forEach(el => {
+        el.addEventListener('click', async () => {
+          const name = el.getAttribute('data-delorderproducer');
+          const pid = el.getAttribute('data-pid');
+          if (!confirm('确定取消该生产方的授权吗？取消后该成员录单时不能再选择该生产方（已指定的订单不受影响）。')) return;
+          try {
+            await api('/api/order-producers/' + encodeURIComponent(name) + '/' + encodeURIComponent(pid), { method: 'DELETE' });
+            await loadUsers();
+          } catch (err) { alert(err.message); }
         });
       });
       // 成员备注（点文字直接修改）

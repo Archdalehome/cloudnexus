@@ -1132,6 +1132,8 @@ async function listUsers(env, teamId) {
         canViewAllOrders: canViewAllTeamOrders(u),
         // 「可查看客户列表」中的客户数量（用于界面显示「否（可查看 N 个客户）」）
         viewCustomerCount: viewCustomers.length,
+        // 权限「可选生产方」（普通成员，**默认「无」**）：已授权可在录单时指定的生产方 id 列表
+        orderProducerIds: await getOrderProducers(env, u.username),
         // 权限6「是否可以下脱敏订单」（订单号右侧的「回形针」补填脱敏订单文件链接）
         canPlaceMaskedOrder: canPlaceMaskedOrder(u),
         // 权限7「是否可以添加出货日期」（「交期」右侧的灰色空白区块：点击添加出货日期）
@@ -1309,6 +1311,21 @@ async function getWatchProducers(env, username) {
 // 保存某生产部「可观察的生产方」id 列表
 async function saveWatchProducers(env, username, ids) {
   await env.TODO_KV.put(`watch:${username}`, JSON.stringify(ids));
+}
+
+// 成员权限「可选生产方」（普通成员录单时可指定哪些生产方；**默认「无」**）：
+//   · 团队管理员在「成员管理」的「可选生产方列表」中逐个授权（记录生产方 id）；
+//   · 授权后该成员在订单录入区会看到「生产方选择」下拉（**只列出已授权的生产方**），
+//     录单时可直接把该订单指定给授权范围内的生产方；不选则不指定生产方（之后仍可由团队管理员指定）；
+//   · 未授权（默认「无」）时该下拉不显示，接口也不允许成员指定生产方。
+async function getOrderProducers(env, username) {
+  const raw = await env.TODO_KV.get(`orderProducers:${username}`);
+  return raw ? JSON.parse(raw) : [];
+}
+
+// 保存某成员「可选生产方」的 id 列表
+async function saveOrderProducers(env, username, ids) {
+  await env.TODO_KV.put(`orderProducers:${username}`, JSON.stringify(ids));
 }
 
 // ============ 站内消息（备注中的 @提及） ============
@@ -1757,6 +1774,7 @@ async function deleteAccountData(env, username) {
   await env.TODO_KV.delete(`todos:${username}`);
   await env.TODO_KV.delete(`customers:${username}`);
   await env.TODO_KV.delete(`viewCustomers:${username}`); // 「可查看客户列表」
+  await env.TODO_KV.delete(`orderProducers:${username}`); // 「可选生产方」授权
   await env.TODO_KV.delete(`watch:${username}`);
   await env.TODO_KV.delete(`mentions:${username}`);
   await env.TODO_KV.delete(`emailcode:${username}`);
@@ -1984,6 +2002,22 @@ async function handleApi(request, env, pathname) {
     info.canPlaceMaskedOrder = canPlaceMaskedOrder(user);
     // 权限7「是否可以添加出货日期」（「交期」右侧的灰色空白区块：点击添加出货日期）
     info.canAddShipDate = canAddShipDate(user);
+    // 权限「可选生产方」（普通成员，**默认「无」**）：该成员录单时可指定的生产方（只返回已授权的）
+    //   —— 为空时录入区不显示「生产方选择」下拉，接口也不允许指定生产方
+    info.orderProducers = [];
+    if (isMemberRole(user.role)) {
+      const allowedIds = await getOrderProducers(env, user.username);
+      if (Array.isArray(allowedIds) && allowedIds.length) {
+        const producers = await getProducers(env, teamIdOf(user));
+        info.orderProducers = producers
+          .filter((p) => allowedIds.indexOf(p.id) !== -1)
+          .map((p) => ({
+            id: p.id,
+            username: p.username,
+            nature: normalizeProducerNature(p.nature),
+          }));
+      }
+    }
     if (isTeamAdmin(user.role)) {
       info.teamId = user.teamId || user.username;
       info.teamName = user.teamName || user.username;
@@ -2626,6 +2660,7 @@ async function handleApi(request, env, pathname) {
     await env.TODO_KV.delete(`todos:${target}`);
     await env.TODO_KV.delete(`customers:${target}`);
     await env.TODO_KV.delete(`viewCustomers:${target}`); // 「可查看客户列表」一并清理
+    await env.TODO_KV.delete(`orderProducers:${target}`); // 「可选生产方」授权一并清理
     await env.TODO_KV.delete(`watch:${target}`);
     await env.TODO_KV.delete(`mentions:${target}`); // 站内消息（@提醒）一并清理
     return json({ ok: true });
@@ -3372,6 +3407,79 @@ async function handleApi(request, env, pathname) {
   }
 
 
+  // ---- 成员权限「可选生产方」授权（仅团队管理员可改；本人可读）----
+  // 说明：授权后该成员在订单录入区的「生产方选择」下拉中只看到这些生产方，录单时可直接指定；
+  //       默认「无」（列表为空）→ 不显示该下拉，也不允许成员在录单时指定生产方。
+  const orderProdPrefix = "/api/order-producers/";
+
+  // 查询某成员「可选生产方」的授权列表（团队管理员可查本团队成员；本人可查自己）
+  if (pathname.startsWith(orderProdPrefix) && method === "GET") {
+    const user = await getCurrentUser(request, env);
+    if (!user) return json({ error: "未登录" }, 401);
+    const target = decodeURIComponent(pathname.replace(orderProdPrefix, ""));
+    if (target !== user.username) {
+      const member = isTeamAdmin(user.role)
+        ? await getTeamMember(env, target, teamIdOf(user))
+        : null;
+      if (!member) return json({ error: "无权限" }, 403);
+    }
+    const ids = await getOrderProducers(env, target);
+    const producers = await getProducers(env, teamIdOf(user));
+    // 已删除的生产方以占位形式返回，便于管理员清理授权
+    const granted = ids.map((id) => {
+      const p = producers.find((x) => x.id === id);
+      return p ? p : { id, username: "（已删除的生产方）", description: "", deleted: true };
+    });
+    return json({ producers: granted, producerIds: ids });
+  }
+
+  // 为某成员授权一个「可选生产方」（仅团队管理员）
+  if (pathname.startsWith(orderProdPrefix) && method === "POST") {
+    const user = await getCurrentUser(request, env);
+    if (!user) return json({ error: "未登录" }, 401);
+    if (!isTeamAdmin(user.role)) return json({ error: "无权限" }, 403);
+    const teamId = teamIdOf(user);
+    const target = decodeURIComponent(pathname.replace(orderProdPrefix, ""));
+    const member = await getTeamMember(env, target, teamId);
+    if (!member) return json({ error: "成员不存在" }, 404);
+    if (!isMemberRole(member.role)) {
+      return json({ error: "「可选生产方」仅适用于普通成员（原业务部）" }, 400);
+    }
+    const { producerId } = await readBody(request);
+    if (!producerId || !String(producerId).trim()) {
+      return json({ error: "请选择生产方" }, 400);
+    }
+    const pid = String(producerId).trim();
+    const producers = await getProducers(env, teamId);
+    if (!producers.some((p) => p.id === pid)) {
+      return json({ error: "生产方不存在，请先在「生产方管理」中添加" }, 400);
+    }
+    const ids = await getOrderProducers(env, target);
+    if (ids.includes(pid)) return json({ error: "已授权该生产方" }, 400);
+    ids.push(pid);
+    await saveOrderProducers(env, target, ids);
+    return json({ ok: true, producerIds: ids });
+  }
+
+  // 取消某成员的「可选生产方」授权（仅团队管理员）
+  if (pathname.startsWith(orderProdPrefix) && method === "DELETE") {
+    const user = await getCurrentUser(request, env);
+    if (!user) return json({ error: "未登录" }, 401);
+    if (!isTeamAdmin(user.role)) return json({ error: "无权限" }, 403);
+    const rest = decodeURIComponent(pathname.replace(orderProdPrefix, ""));
+    const slash = rest.lastIndexOf("/");
+    if (slash === -1) return json({ error: "参数错误" }, 400);
+    const target = rest.slice(0, slash);
+    const pid = rest.slice(slash + 1);
+    const member = await getTeamMember(env, target, teamIdOf(user));
+    if (!member) return json({ error: "成员不存在" }, 404);
+    let ids = await getOrderProducers(env, target);
+    ids = ids.filter((x) => x !== pid);
+    await saveOrderProducers(env, target, ids);
+    return json({ ok: true, producerIds: ids });
+  }
+
+
   // ---- 可 @ 的人员列表（备注中输入「@」时弹出：团队账号本人 + 本团队所有成员）----
   if (pathname === "/api/team-members" && method === "GET") {
     const user = await getCurrentUser(request, env);
@@ -3561,7 +3669,8 @@ async function handleApi(request, env, pathname) {
         403
       );
     }
-    const { title, customer, dueDate, amount, orderUrl, purchaseUrl, currency } =
+    // 注：producerId 为「可选生产方」权限下由成员在录单时选择的授权生产方（可选，可为空）
+    const { title, customer, dueDate, amount, orderUrl, purchaseUrl, currency, producerId: bodyProducerId } =
       await readBody(request);
     if (!customer || !customer.trim()) return json({ error: "选择客户" }, 400);
     if (!title || !title.trim()) return json({ error: "请输入主题" }, 400);
@@ -3593,6 +3702,33 @@ async function handleApi(request, env, pathname) {
         return json({ error: "客户不存在，请联系管理员添加" }, 400);
       }
     }
+    // 权限「可选生产方」（默认「无」）：录单时可**在授权范围内**直接为订单指定生产方 ——
+    //   · 未授权（列表为空）：不传 producerId（传了会被拦截）；生产方之后仍可由团队管理员指定；
+    //   · 已授权：producerId 必须是其被授权的生产方之一，且该生产方在当前团队中仍然存在。
+    let producerId = "";
+    let producerName = "";
+    const wantProducer = bodyProducerId === undefined || bodyProducerId === null
+      ? ""
+      : String(bodyProducerId).trim();
+    if (wantProducer) {
+      const allowed = await getOrderProducers(env, user.username);
+      if (!Array.isArray(allowed) || allowed.indexOf(wantProducer) === -1) {
+        return json(
+          {
+            error:
+              "无权指定该生产方：请联系团队管理员在「成员管理」的「可选生产方列表」中为你授权",
+          },
+          403
+        );
+      }
+      const producers = await getProducers(env, teamIdOf(user));
+      const picked = producers.find((p) => p.id === wantProducer);
+      if (!picked) {
+        return json({ error: "生产方不存在，请先在「生产方管理」中添加" }, 400);
+      }
+      producerId = picked.id;
+      producerName = picked.username;
+    }
     const todos = await getTodos(env, user.username);
     const todo = {
       id: genToken().slice(0, 12),
@@ -3608,6 +3744,12 @@ async function handleApi(request, env, pathname) {
       done: false,
       createdAt: new Date().toISOString(),
     };
+    // 录单时已在授权范围内指定了生产方：直接写入（订单行会立即显示「自产单 / 外购单」标签）
+    if (producerId) {
+      todo.producerId = producerId;
+      todo.producerName = producerName;
+      todo.producerAssignedAt = new Date().toISOString();
+    }
 
 
     todos.unshift(todo);
