@@ -1272,14 +1272,37 @@ async function saveCustomerList(env, teamId, list) {
   await env.TODO_KV.put(key, JSON.stringify(list));
 }
 
-// 生产方性质：self=自产（默认）/ purchased=外购
-// 历史数据没有该字段时统一按「自产」处理（生产方列表里可直接切换）
-const PRODUCER_NATURES = ["self", "purchased"];
-const PRODUCER_NATURE_DEFAULT = "self";
+// 生产方性质：**由团队管理员在「生产方管理」中手动输入的文字**（如「自产」「外购」「代工」等），
+// 会显示在订单行右侧（**生产方用户名 + 性质**，如「张三·自产」）。
+//   · 长度限制：最多 **3 个中文字符或 6 个英文字符**（按「中文 = 2、其他 = 1」的权重，总权重 ≤ 6）；
+//   · 历史数据兼容：'self' → '自产'、'purchased' → '外购'；空值 → 默认「自产」。
+const PRODUCER_NATURE_DEFAULT = "自产";
+const PRODUCER_NATURE_MAX_WEIGHT = 6;
 
+// 单个字符的权重：中文 2、其他 1（据此实现「3 个中文或 6 个英文」）
+function natureCharWeight(ch) {
+  return /[\u4e00-\u9fa5]/.test(ch) ? 2 : 1;
+}
+
+// 性质文字归一化（含历史值 self / purchased 的兼容），返回可直接显示的文本
 function normalizeProducerNature(raw) {
   const v = String(raw === undefined || raw === null ? "" : raw).trim();
-  return PRODUCER_NATURES.includes(v) ? v : PRODUCER_NATURE_DEFAULT;
+  if (!v) return PRODUCER_NATURE_DEFAULT;
+  if (v === "self") return "自产";
+  if (v === "purchased") return "外购";
+  return v;
+}
+
+// 手动输入的性质校验：返回 "" 表示合法，否则返回错误提示（最多 3 个中文或 6 个英文）
+function producerNatureError(raw) {
+  const v = String(raw === undefined || raw === null ? "" : raw).trim();
+  if (!v) return "请输入生产方性质（如：自产 / 外购）";
+  let weight = 0;
+  for (const ch of v) weight += natureCharWeight(ch);
+  if (weight > PRODUCER_NATURE_MAX_WEIGHT) {
+    return "生产方性质最多 3 个中文字符或 6 个英文字符（如：自产 / 外购 / OEM）";
+  }
+  return "";
 }
 
 // 获取本团队生产方列表（团队内共享，团队所有成员可见）
@@ -3279,7 +3302,8 @@ async function handleApi(request, env, pathname) {
   }
 
   // 新增生产方（试用版与专业版功能相同；试用版最多 1 个生产方，订阅后解除限制）：
-  // 字段为「用户名」「密码」（生产方用该账号登录，只看指定给自己的待办）和「说明」
+  // 字段为「用户名」「密码」（生产方用该账号登录，只看指定给自己的待办）「性质」「说明」；
+  // 「性质」为**手动输入文字**（最多 3 个中文字符或 6 个英文字符），留空按默认「自产」。
   if (pathname === "/api/producers" && method === "POST") {
     const user = await getCurrentUser(request, env);
     if (!user) return json({ error: "未登录" }, 401);
@@ -3298,6 +3322,12 @@ async function handleApi(request, env, pathname) {
     if (!password || !String(password).trim()) {
       return json({ error: "请输入密码" }, 400);
     }
+    // 生产方性质：手动输入（最多 3 个中文或 6 个英文；留空按默认「自产」）
+    const natureText = String(nature === undefined || nature === null ? "" : nature).trim();
+    if (natureText) {
+      const natErr = producerNatureError(natureText);
+      if (natErr) return json({ error: natErr }, 400);
+    }
     const producers = await getProducers(env, teamId);
     if (producers.some((p) => p.username === uname)) {
       return json({ error: "该用户名已存在" }, 400);
@@ -3309,7 +3339,7 @@ async function handleApi(request, env, pathname) {
       id: genToken().slice(0, 12),
       username: uname,
       description: (description || "").trim(),
-      nature: normalizeProducerNature(nature),
+      nature: normalizeProducerNature(natureText),
       createdAt: new Date().toISOString(),
     };
     producers.push(producer);
@@ -3371,7 +3401,7 @@ async function handleApi(request, env, pathname) {
   }
 
 
-  // 修改生产方「性质」（自产 / 外购）（专业版功能）
+  // 修改生产方「性质」：**手动输入的文字**（最多 3 个中文字符或 6 个英文字符；必填）（专业版功能）
   if (
     pathname.startsWith("/api/producers/") &&
     pathname.endsWith("/nature") &&
@@ -3386,9 +3416,9 @@ async function handleApi(request, env, pathname) {
     );
     const { nature } = await readBody(request);
     const value = String(nature === undefined || nature === null ? "" : nature).trim();
-    if (!PRODUCER_NATURES.includes(value)) {
-      return json({ error: "生产方性质只能是「自产」或「外购」" }, 400);
-    }
+    // 手动输入的性质校验：最多 3 个中文或 6 个英文（必填）
+    const natErr = producerNatureError(value);
+    if (natErr) return json({ error: natErr }, 400);
     const producers = await getProducers(env, teamId);
     const prod = producers.find((p) => p.id === id);
     if (!prod) return json({ error: "生产方不存在" }, 404);

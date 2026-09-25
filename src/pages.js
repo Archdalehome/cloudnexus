@@ -715,8 +715,8 @@ const INTRO_FLOW = `
           选好立即保存并恢复为普通显示（失焦未改则原样换回，列表更清爽、也不易误改）。</li>
           <li><b>交期配色</b>：当前日期已过交期显示<b>红色</b>、剩余 1~14 天显示<b>黄色</b>、剩余 14 天以上显示<b>绿色</b>，一眼看出紧急程度。</li>
           <li><b>订单文件链接（客户订单）</b>：录入订单时填写（须以 http:// 或 https:// 开头，可留空）；有权限的成员点击 PO# 即可打开。</li>
-          <li><b>采购文件链接（生产订单）</b>：订单行上黄色的「自产单 / 外购单」标签表示<b>尚未填写采购文件</b>，
-          有权限的成员点击即可补填（不影响订单状态）；已填写时标签为灰色，点击直接打开。</li>
+          <li><b>采购文件链接（生产订单）</b>：订单行右侧的「<b>生产方用户名·生产方性质</b>」标签（如「张三·自产」）在<b>尚未填写采购文件</b>时显示为黄色，
+          有权限的成员点击即可补填（不影响订单状态）；已填写时为灰色，点击直接打开。</li>
           <li><b>脱敏订单文件链接</b>：订单号右侧的「回形针」图标 —— 灰色 = 未填写（有权限者可点击补填），蓝色 = 已填写（点击打开）。</li>
           <li><b>出货日期</b>：「交期」右侧的灰色区块，有权限的成员点击即可为订单添加出货日期（每单只能添加一次）。</li>
           <li><b>备注与 @ 提醒</b>：每条订单都可追加备注（不可删除）；备注里写 <b>@成员用户名</b>，对方顶栏登录名左侧会出现站内消息角标。</li>
@@ -759,12 +759,12 @@ const INTRO_PERMS = `
               <tr>
                 <td>权限3 是否可以下生产订单</td>
                 <td><span class="intro-tag off">默认「无」</span></td>
-                <td>= 有：点击黄色「自产单 / 外购单」标签<b>补填采购文件链接</b></td>
+                <td>= 有：点击黄色的「<b>生产方·性质</b>」标签<b>补填采购文件链接</b></td>
               </tr>
               <tr>
                 <td>权限4 是否可以查看生产订单</td>
                 <td><span class="intro-tag off">默认「无」</span></td>
-                <td>= 有：点击已填链接的「自产单 / 外购单」标签打开<b>采购文件</b></td>
+                <td>= 有：点击已填链接的「<b>生产方·性质</b>」标签打开<b>采购文件</b></td>
               </tr>
               <tr>
                 <td>权限5 是否可以更新订单状态</td>
@@ -830,7 +830,7 @@ ${INTRO_ABOUT}${INTRO_ROLES}${INTRO_FLOW}${INTRO_PERMS}
           <li><b>订单流转</b>：由有权限的成员（权限5「是否可以更新订单状态」= 有）<b>点击订单行最左侧的「状态」徽章</b>（就地变为下拉）把状态从「待确认」改为「进行中」
           （试用团队没有生产方时可直接改；已添加生产方后需先指定生产方），交付完成后改为「已完成」。
           列表上方的「<b>筛选</b>」行可按<b>客户 / 状态</b>筛选（<b>默认只显示「进行中」</b>，要查看「待确认 / 已完成 / 全部状态」需在「状态」下拉中选择）。</li>
-          <li><b>补填与跟踪</b>：采购文件链接（黄色「自产单 / 外购单」标签）、脱敏订单文件链接（订单号右侧「回形针」）、
+          <li><b>补填与跟踪</b>：采购文件链接（订单行右侧的「<b>生产方·性质</b>」标签，如「张三·自产」；未填采购文件时为黄色）、脱敏订单文件链接（订单号右侧「回形针」）、
           出货日期（「交期」右侧灰色区块）由有权限的成员直接在订单行上补填；备注里 @ 同事会触发站内消息提醒。</li>
           <li><b>需要更多成员 / 生产方 / 客户，或想移除广告位</b>：点顶栏「订阅」→ 选择套餐 → 提交订阅申请，
           平台超级管理员开通后即为订阅版（数量不限 + 无广告位 + 有效期顺延）。</li>
@@ -888,7 +888,7 @@ ${INTRO_ABOUT}${INTRO_ROLES}${INTRO_FLOW}${INTRO_PERMS}
           <li><b>订单流转</b>：由有权限的成员（权限5「是否可以更新订单状态」= 有）<b>点击订单行最左侧的「状态」徽章</b>（就地变为下拉）把状态从「待确认」改为「进行中」
           —— 此时<b>必须先指定生产方</b>（下拉或弹窗选择），交付完成后改为「已完成」。
           列表上方的「<b>筛选</b>」行可按<b>客户 / 状态</b>筛选（<b>默认只显示「进行中」</b>，要查看「待确认 / 已完成 / 全部状态」需在「状态」下拉中选择）。</li>
-          <li><b>补填与跟踪</b>：采购文件链接（黄色「自产单 / 外购单」标签）、脱敏订单文件链接（订单号右侧「回形针」）、
+          <li><b>补填与跟踪</b>：采购文件链接（订单行右侧的「<b>生产方·性质</b>」标签，如「张三·自产」；未填采购文件时为黄色）、脱敏订单文件链接（订单号右侧「回形针」）、
           出货日期（「交期」右侧灰色区块）由有权限的成员直接在订单行上补填；备注里 @ 同事会触发站内消息提醒。</li>
           <li><b>到期前续费</b>：关注顶栏徽章剩余天数，剩余不足 30 天时点「续费」→ 选择套餐 → 提交续费申请，
           由平台超级管理员开通后有效期顺延；已提交的申请在开通前按钮显示「续费申请已提交」。</li>
@@ -1980,10 +1980,10 @@ ${commonStyle}
   .desc-editable:hover .desc-empty { color: #2383e2; text-decoration: underline; }
   .producer-row .btn-danger { padding: 4px 10px; font-size: 13px; }
   .producer-empty { font-size: 13px; color: #c9c9c5; padding: 6px 0; }
-  /* 生产方性质（自产 / 外购）：新增表单里选择，列表里可直接切换 */
-  .modal .field select.producer-nature { width: 100%; }
-  select.producer-nature,
-  select.producer-nature-select {
+  /* 生产方性质（**手动输入文字**：最多 3 个中文字符或 6 个英文字符）：
+     新增表单里输入，列表里也可直接修改（输入即按「中文 = 2 / 其他 = 1」的权重截断） */
+  .modal .field input.producer-nature { width: 100%; }
+  input.producer-nature {
     font-family: inherit;
     font-size: 14px;
     border: 1px solid #e0e0dc;
@@ -1993,17 +1993,23 @@ ${commonStyle}
     color: #37352f;
     outline: none;
   }
-  select.producer-nature-select {
+  input.producer-nature:focus { border-color: #2383e2; }
+  /* 列表内的小输入框（紧凑样式，贴近原来的性质徽章） */
+  input.producer-nature-input {
+    font-family: inherit;
     font-size: 12px;
     font-weight: 500;
+    width: 6.5em;
     padding: 2px 8px;
     border-radius: 10px;
+    border: 1px solid #e0e0dc;
     color: #6b6b68;
-    background: #f1f1ef;
-    cursor: pointer;
+    background: #f7f7f5;
+    outline: none;
     flex-shrink: 0;
+    text-align: center;
   }
-  select.producer-nature-select:focus { border-color: #2383e2; }
+  input.producer-nature-input:focus { border-color: #2383e2; background: #fff; }
   .producer-name-row {
     display: flex;
     align-items: center;
@@ -2283,6 +2289,11 @@ ${commonStyle}
     .producer-select { max-width: 100%; }
     /* 「生产方」普通显示标签：手机上允许收缩（过长以省略号收尾），避免挤掉 PO# 与交期 */
     .producer-pick { max-width: 100%; flex-shrink: 1; min-width: 0; }
+    /* 手机上**「客户」必须显示**（覆盖「宽度不足时自动隐藏客户」的 @container 规则）：
+       允许收缩、过长以省略号收尾，保证订单行仍是一行 */
+    .todo-customer { display: block; min-width: 3em; max-width: 7em; }
+    /* 生产方标签文字变长（生产方用户名 + 性质）：允许收缩，避免把 PO# / 交期挤掉 */
+    .todo-producer { flex-shrink: 1; min-width: 0; max-width: 9em; overflow: hidden; text-overflow: ellipsis; }
     /* 备注区：状态提示单独一行，按钮换行不挤压 */
     .body-actions { flex-wrap: wrap; }
     .body-actions .save-status { width: 100%; margin-right: 0; order: 3; }
@@ -2576,11 +2587,10 @@ ${isTeamHome ? teamIntroHtml(teamPlan) : ''}    <div id="listArea"${isTeamHome ?
         <input type="password" id="newProducerPwd" placeholder="请输入登录密码（可用下方「重置密码」修改）" maxlength="50">
       </div>
       <div class="field">
-        <label>生产方性质</label>
-        <select class="producer-nature" id="newProducerNature">
-          <option value="self" selected>自产</option>
-          <option value="purchased">外购</option>
-        </select>
+        <label>生产方性质（手动输入：最多 3 个中文字符或 6 个英文字符）</label>
+        <input type="text" class="producer-nature" id="newProducerNature" value="自产" maxlength="6"
+          autocomplete="off" placeholder="如：自产 / 外购 / OEM"
+          title="手动输入，最多 3 个中文字符或 6 个英文字符；订单行右侧显示为「生产方用户名·性质」">
       </div>
       <div class="field">
         <label>说明</label>
@@ -3125,7 +3135,7 @@ ${isTeamHome ? teamIntroHtml(teamPlan) : ''}    <div id="listArea"${isTeamHome ?
     }
     sel.innerHTML = '<option value="">不指定生产方</option>' +
       list.map(p => '<option value="' + esc(p.id) + '">' + esc(p.username) +
-        (p.nature === 'purchased' ? '（外购）' : '（自产）') + '</option>').join('');
+        (p.nature ? '（' + esc(p.nature) + '）' : '') + '</option>').join('');
     const names = list.map(p => p.username).join('、');
     sel.title = '给本订单指定生产方（已授权 ' + list.length + ' 个：' + names + '）';
     sel.style.display = '';
@@ -3431,14 +3441,16 @@ ${isTeamHome ? teamIntroHtml(teamPlan) : ''}    <div id="listArea"${isTeamHome ?
     // 生产方标签（只显示简称）：历史数据可能只有 producerId，用生产方列表兜底
     const producerShort = t.producerName ||
       (t.producerId ? ((producersCache.find(p => p.id === t.producerId) || {}).username || '') : '');
-    // 订单行标签文字：按该订单生产方的「生产方性质」显示「自产单 / 外购单」
-    // （生产方名称放在悬浮提示里；生产方已被删除、取不到性质时回退为显示名称）
+    // 订单行标签文字 = **生产方用户名 + 生产方性质**（如「张三·自产」/「李四·外购」）：
+    // 性质由团队管理员在「生产方管理」中手动填写（最多 3 个中文或 6 个英文）；
+    // 历史数据（self / purchased）在服务端已归一化为「自产 / 外购」；生产方被删除时只显示用户名。
     const producerInfo = t.producerId
       ? (producersCache.find(p => p.id === t.producerId) || null)
       : null;
+    const producerNatureText = producerInfo ? (producerInfo.nature || '') : '';
     const producerLabel = producerShort
-      ? (producerInfo
-        ? (producerInfo.nature === 'purchased' ? '外购单' : '自产单')
+      ? (producerNatureText && producerNatureText !== producerShort
+        ? producerShort + '·' + producerNatureText
         : producerShort)
       : '';
     // 已填「采购文件链接」的灰色标签（权限4「是否可以查看生产订单」= 是时）：
@@ -3455,18 +3467,20 @@ ${isTeamHome ? teamIntroHtml(teamPlan) : ''}    <div id="listArea"${isTeamHome ?
     const canFillPurchase = producerWarn && !!currentUser.canPurchase;
     const producerTagCls = 'todo-producer' + (producerWarn ? ' todo-producer-warn' : '') +
       (canFillPurchase ? ' todo-producer-addable' : '');
-    const producerNameTip = producerShort && producerShort !== producerLabel
-      ? '（' + producerShort + '）' : '';
+    // 悬浮提示：生产方用户名 + 生产方性质（再拼上采购文件链接相关提示）
+    const producerTip = producerShort
+      ? ('生产方：' + producerShort + (producerNatureText ? '｜性质：' + producerNatureText : ''))
+      : '';
     const producerTag = producerLabel
       ? (producerTagAsLink
         ? '<a class="todo-producer todo-producer-link" href="' + esc(t.purchaseUrl) + '"' +
           ' target="_blank" rel="noopener noreferrer"' +
-          ' title="' + esc(producerLabel) + ' ' + esc(producerNameTip) +
+          ' title="' + esc(producerTip) +
           '｜点击打开采购文件：' + esc(t.purchaseUrl) + '">' +
           esc(producerLabel) + '</a>'
         : '<div class="' + producerTagCls + '"' +
           (canFillPurchase ? ' data-addpurchase="' + esc(t.id) + '"' : '') +
-          ' title="' + esc(producerLabel) + ' ' + esc(producerNameTip) +
+          ' title="' + esc(producerTip) +
           (producerWarn ? (canFillPurchase ? '｜点击添加采购文件链接' : '｜未填写采购文件链接') : '') + '">' +
           esc(producerLabel) + '</div>')
       : '';
@@ -4827,7 +4841,7 @@ ${isTeamHome ? teamIntroHtml(teamPlan) : ''}    <div id="listArea"${isTeamHome ?
     const chips = granted.length
       ? granted.map(p =>
           '<span class="customer-chip order-producer-chip">' + esc(p.username) +
-          (p.deleted ? '' : (p.nature === 'purchased' ? '（外购）' : '（自产）')) +
+          (p.deleted ? '' : (p.nature ? '（' + esc(p.nature) + '）' : '')) +
           '<span class="customer-chip-del" data-delorderproducer="' + esc(u.username) +
           '" data-pid="' + esc(p.id) + '" title="取消授权（取消后该成员录单时不能再选择该生产方）">×</span></span>'
         ).join('')
@@ -5009,7 +5023,7 @@ ${isTeamHome ? teamIntroHtml(teamPlan) : ''}    <div id="listArea"${isTeamHome ?
               permToggle('data-canviewpurchase', '是否可以查看生产订单', u.canViewPurchaseOrder === true, '是', '否') +
               permToggle('data-canupdatestatus', '是否可以更新订单状态', u.canUpdateStatus === true, '是', '否',
                 '「是否可以更新订单状态」= 是 时，该成员在**自己可见的订单范围内**拥有与团队管理员相同的操作能力：' +
-                '可改变状态 / 指定生产方 / 修改「待确认」订单 / 删除 / 添加备注，且订单号与「自产单 / 外购单」标签可点击；' +
+                '可改变状态 / 指定生产方 / 修改「待确认」订单 / 删除 / 添加备注，且订单号与「生产方·性质」标签可点击；' +
                 '**注意：该权限不会扩大可见范围** —— 能看到的订单仍由「是否可查看全部订单 / 可查看客户列表」决定。' +
                 '改动后**该成员无需重新登录**：其页面每 60 秒自动生效（切回该页面或刷新页面时立即生效）；默认「否」') +
               permToggle('data-canmaskedorder', '是否可以下脱敏订单', u.canPlaceMaskedOrder === true, '是', '否',
@@ -5303,11 +5317,9 @@ ${isTeamHome ? teamIntroHtml(teamPlan) : ''}    <div id="listArea"${isTeamHome ?
           '<div>' +
             '<div class="producer-name-row">' +
               '<div class="producer-short">' + esc(p.username) + '</div>' +
-              '<select class="producer-nature-select" data-producer-nature="' + esc(p.id) + '"' +
-                ' title="生产方性质（自产 / 外购）：选择后立即保存">' +
-                '<option value="self"' + (p.nature === 'purchased' ? '' : ' selected') + '>自产</option>' +
-                '<option value="purchased"' + (p.nature === 'purchased' ? ' selected' : '') + '>外购</option>' +
-              '</select>' +
+              '<input type="text" class="producer-nature-input" data-producer-nature="' + esc(p.id) + '"' +
+                ' value="' + esc(p.nature || '') + '" maxlength="6" autocomplete="off"' +
+                ' title="生产方性质（手动输入：最多 3 个中文字符或 6 个英文字符）—— 修改后按回车或点其他地方即保存">' +
             '</div>' +
             editTextHtml('producer', p.id, p.username, p.description, '未填写说明', 'producer-desc') +
           '</div>' +
@@ -5318,11 +5330,22 @@ ${isTeamHome ? teamIntroHtml(teamPlan) : ''}    <div id="listArea"${isTeamHome ?
         '</div>').join('');
       // 说明可点击修改
       bindDescEditors(list, () => loadProducers());
-      // 生产方性质（自产 / 外购）：列表内直接切换，选择后立即保存
+      // 生产方性质（**手动输入文字**，最多 3 个中文或 6 个英文）：
+      //   输入时按「中文 = 2 / 其他 = 1」的权重截断；回车或失焦（值有变化）即保存到服务端
       list.querySelectorAll('[data-producer-nature]').forEach(el => {
-        el.addEventListener('change', async () => {
+        const original = el.value;
+        el.addEventListener('input', function () { clampNatureInput(el); });
+        el.addEventListener('keydown', function (e) {
+          if (e.key === 'Enter') { e.preventDefault(); el.blur(); }
+        });
+        el.addEventListener('blur', function () {
+          if (!el.value.trim()) el.value = original; // 清空则还原（不落库）
+        });
+        el.addEventListener('change', async function () {
           const id = el.getAttribute('data-producer-nature');
-          const nature = el.value;
+          const nature = el.value.trim();
+          if (nature === original) return;            // 未修改
+          if (!nature) return;                        // 空值：已在 blur 中还原
           el.disabled = true;
           try {
             await api('/api/producers/' + encodeURIComponent(id) + '/nature', {
@@ -5335,8 +5358,8 @@ ${isTeamHome ? teamIntroHtml(teamPlan) : ''}    <div id="listArea"${isTeamHome ?
             render();
           } catch (err) {
             alert(err.message);
-            producersCache = [];
-            await loadProducers();
+            el.value = original;
+            el.disabled = false;
           }
         });
       });
@@ -5369,6 +5392,29 @@ ${isTeamHome ? teamIntroHtml(teamPlan) : ''}    <div id="listArea"${isTeamHome ?
     }
   }
 
+  // ---------- 生产方性质输入（手动输入：最多 3 个中文字符或 6 个英文字符） ----------
+  // 按「中文 = 2、其他 = 1」的权重实时截断（超出部分不再录入）；服务端会再校验一次。
+  function clampNatureInput(el) {
+    const raw = String(el.value || '');
+    let out = '';
+    let weight = 0;
+    for (const ch of raw) {
+      const code = ch.charCodeAt(0);
+      const w = (code >= 0x4e00 && code <= 0x9fa5) ? 2 : 1; // 中文（CJK 基本区）权重 2
+      if (weight + w > 6) break;                            // 3 个中文或 6 个英文
+      out += ch;
+      weight += w;
+    }
+    if (out !== raw) el.value = out;
+  }
+
+  const newProducerNatureEl = document.getElementById('newProducerNature');
+  if (newProducerNatureEl) {
+    newProducerNatureEl.addEventListener('input', function () {
+      clampNatureInput(newProducerNatureEl);
+    });
+  }
+
   document.getElementById('btnAddProducer').addEventListener('click', async () => {
     const msg = document.getElementById('producerMsg');
     msg.className = 'msg';
@@ -5397,7 +5443,7 @@ ${isTeamHome ? teamIntroHtml(teamPlan) : ''}    <div id="listArea"${isTeamHome ?
       document.getElementById('newProducerShort').value = '';
       document.getElementById('newProducerPwd').value = '';
       document.getElementById('newProducerDesc').value = '';
-      document.getElementById('newProducerNature').value = 'self';
+      document.getElementById('newProducerNature').value = '自产';
       producersCache = [];
       await loadProducers();
       render();
