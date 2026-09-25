@@ -709,6 +709,10 @@ const INTRO_FLOW = `
           <b>进行中（默认）</b> / 待确认 / 已完成 / 全部状态。<b>默认视图 = 全部客户 + 进行中</b>：
           要查看其他状态的订单，需在「状态」中筛选后查看；右侧显示「显示 X / Y 条」，
           点「重置」恢复默认，筛选后无结果时会给出提示。</li>
+          <li><b>状态与生产方：普通显示、点击即改</b>：订单行最左侧的「<b>状态</b>」固定显示为彩色徽章
+          （待确认 / 进行中 / 已完成），「待确认」阶段的「<b>生产方</b>」也显示为普通文本标签；
+          有权限的成员（权限5 = 有 / 总经理 / 部门主管）<b>点击徽章或标签</b>即就地变为下拉选择，
+          选好立即保存并恢复为普通显示（失焦未改则原样换回，列表更清爽、也不易误改）。</li>
           <li><b>交期配色</b>：当前日期已过交期显示<b>红色</b>、剩余 1~14 天显示<b>黄色</b>、剩余 14 天以上显示<b>绿色</b>，一眼看出紧急程度。</li>
           <li><b>订单文件链接（客户订单）</b>：录入订单时填写（须以 http:// 或 https:// 开头，可留空）；有权限的成员点击 PO# 即可打开。</li>
           <li><b>采购文件链接（生产订单）</b>：订单行上黄色的「自产单 / 外购单」标签表示<b>尚未填写采购文件</b>，
@@ -823,7 +827,7 @@ ${INTRO_ABOUT}${INTRO_ROLES}${INTRO_FLOW}${INTRO_PERMS}
             ③ 按需开通权限2~权限7 与「可选生产方列表」。</li>
           <li><b>让成员登录录入订单</b>：团队管理员本人不录入订单 —— 把登录网址与成员账号发给对应同事，
           由成员登录后在「添加新订单」录入区填写客户 / 订单号 / 交期 / 币种 / 金额 / 订单文件链接并添加（新订单为「待确认」）。</li>
-          <li><b>订单流转</b>：由有权限的成员（权限5「是否可以更新订单状态」= 有）在订单行上把状态从「待确认」改为「进行中」
+          <li><b>订单流转</b>：由有权限的成员（权限5「是否可以更新订单状态」= 有）<b>点击订单行最左侧的「状态」徽章</b>（就地变为下拉）把状态从「待确认」改为「进行中」
           （试用团队没有生产方时可直接改；已添加生产方后需先指定生产方），交付完成后改为「已完成」。
           列表上方的「<b>筛选</b>」行可按<b>客户 / 状态</b>筛选（<b>默认只显示「进行中」</b>，要查看「待确认 / 已完成 / 全部状态」需在「状态」下拉中选择）。</li>
           <li><b>补填与跟踪</b>：采购文件链接（黄色「自产单 / 外购单」标签）、脱敏订单文件链接（订单号右侧「回形针」）、
@@ -881,7 +885,7 @@ ${INTRO_ABOUT}${INTRO_ROLES}${INTRO_FLOW}${INTRO_PERMS}
             ③ 按需开通权限2~权限7 与「可选生产方列表」（订单量大时，可给业务主管 / 计划岗位开通权限5，由其在可见范围内流转订单）。</li>
           <li><b>让成员登录录入订单</b>：团队管理员本人不录入订单 —— 把登录网址与成员账号发给对应同事，
           由成员登录后在「添加新订单」录入区填写客户 / 订单号 / 交期 / 币种 / 金额 / 订单文件链接并添加（新订单为「待确认」）。</li>
-          <li><b>订单流转</b>：由有权限的成员（权限5「是否可以更新订单状态」= 有）在订单行上把状态从「待确认」改为「进行中」
+          <li><b>订单流转</b>：由有权限的成员（权限5「是否可以更新订单状态」= 有）<b>点击订单行最左侧的「状态」徽章</b>（就地变为下拉）把状态从「待确认」改为「进行中」
           —— 此时<b>必须先指定生产方</b>（下拉或弹窗选择），交付完成后改为「已完成」。
           列表上方的「<b>筛选</b>」行可按<b>客户 / 状态</b>筛选（<b>默认只显示「进行中」</b>，要查看「待确认 / 已完成 / 全部状态」需在「状态」下拉中选择）。</li>
           <li><b>补填与跟踪</b>：采购文件链接（黄色「自产单 / 外购单」标签）、脱敏订单文件链接（订单号右侧「回形针」）、
@@ -1297,6 +1301,25 @@ ${commonStyle}
     flex-shrink: 0;
   }
   .producer-select.unset { color: #d9730d; border-color: #f0d6b8; background: #fffaf3; }
+  /* 「选择生产方」（待确认阶段、有权限者）：**默认显示为普通标签**（不是下拉菜单），
+     点击该标签才就地变为下拉选择（见 enterProducerEdit）—— 与只读显示形式一致 */
+  .producer-pick {
+    font-size: 11px;
+    padding: 3px 6px;
+    border-radius: 6px;
+    border: 1px solid #e0e0dc;
+    background: #fff;
+    color: #0f7b6c;
+    max-width: 150px;
+    flex-shrink: 0;
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .producer-pick:hover { border-color: #2383e2; }
+  /* 未指定生产方：橙色提示态（与下拉的 unset 样式一致） */
+  .producer-pick.unset { color: #d9730d; border-color: #f0d6b8; background: #fffaf3; }
   /* 未指定生产方时的提示（详情区内） */
   .producer-hint {
     font-size: 12px;
@@ -1391,6 +1414,10 @@ ${commonStyle}
     outline: none;
   }
   .status-select:focus { border-color: #2383e2; }
+  /* 可改状态的角色（总经理 / 权限5 成员）：状态徽章**仍按普通形式显示**（不是下拉菜单），
+     但可点击 —— 点击后就地变为下拉选择（见 enterStatusEdit）；鼠标悬浮给出可点击提示 */
+  .status-badge.status-editable { cursor: pointer; }
+  .status-badge.status-editable:hover { box-shadow: 0 0 0 2px rgba(35,131,226,0.18); }
   .todo-title {
     flex: 1 1 auto;
     min-width: 6em;
@@ -2254,6 +2281,8 @@ ${commonStyle}
     .todo-due .due-short { display: inline; }
     .todo-body-inner { padding: 12px 12px 14px 12px; }
     .producer-select { max-width: 100%; }
+    /* 「生产方」普通显示标签：手机上允许收缩（过长以省略号收尾），避免挤掉 PO# 与交期 */
+    .producer-pick { max-width: 100%; flex-shrink: 1; min-width: 0; }
     /* 备注区：状态提示单独一行，按钮换行不挤压 */
     .body-actions { flex-wrap: wrap; }
     .body-actions .save-status { width: 100%; margin-right: 0; order: 3; }
@@ -3454,44 +3483,27 @@ ${isTeamHome ? teamIntroHtml(teamPlan) : ''}    <div id="listArea"${isTeamHome ?
           : ''))
       : '';
 
-    // 生产方下拉（仅管理员）：待确认阶段即可直接指定；改为「进行中」前必须有值
-    const producerOptions = producersCache.map(p =>
-      '<option value="' + esc(p.id) + '"' + (t.producerId === p.id ? ' selected' : '') + '>' +
-      esc(p.username) + '</option>').join('');
-    // 生产方下拉（仅管理员/总经理、且仅「待确认」阶段显示）
-    // 「进行中 / 已完成」已有灰色生产方标签，无需保留下拉（避免误改）
-    // 生产方下拉（仅管理员/总经理、且仅「待确认」阶段显示）
-    // 「进行中 / 已完成」已有灰色生产方标签，无需保留下拉（避免误改）
+    // 「生产方」（仅待确认阶段、有权限者）：**默认显示为普通标签**（不是下拉菜单）——
+    // 点击标签后才就地变为下拉选择（见 enterProducerEdit）；未指定时显示「选择生产方」。
+    // 注：进行中 / 已完成「已有灰色生产方标签」，无需显示（如需修改先改回「待确认」）。
     // 试用版同样有「生产方管理」（最多 1 个，订阅后解除限制）：
-    // 列表中没有任何生产方时不显示无效的下拉，改用下方提示引导去添加生产方
-    // （历史上已存在生产方时仍可正常指定）
+    // 列表中没有任何生产方时不显示无效的控件，改用下方提示引导去添加生产方。
     const showProducerSelect = isTodoManager && st === 'pending' &&
       !(isTrialTeam && !producersCache.length);
-    const producerSelect = showProducerSelect
-      ? '<select class="producer-select' + (t.producerId ? '' : ' unset') +
-        '" data-producer-select="' + t.id + '" title="指定该待办的生产方">' +
-        '<option value=""' + (t.producerId ? '' : ' selected') + '>' +
-        (producersCache.length ? '选择生产方' : '请先添加生产方') + '</option>' +
-        producerOptions + '</select>'
-      : '';
-    // 管理员/总经理：未指定生产方时给出提示（进行中/已完成阶段无下拉，需先改回待确认）
+    const producerSelect = showProducerSelect ? producerPickHtml(t) : '';
+    // 管理员/总经理：未指定生产方时给出提示（进行中/已完成阶段无控件，需先改回待确认）
     const producerHint = (isTodoManager && !t.producerId)
       ? ((isTrialTeam && !producersCache.length)
         ? '<div class="producer-hint">尚无生产方：可点击顶部「生产方管理」添加（试用版最多 1 个生产方，订阅后可添加更多）。</div>'
         : (st === 'pending'
-          ? '<div class="producer-hint">尚未指定生产方：可直接在上方标题行的「生产方」下拉中选择；改为「进行中」前必须指定。</div>'
+          ? '<div class="producer-hint">尚未指定生产方：可点击上方标题行的「生产方」标签选择；改为「进行中」前必须指定。</div>'
           : '<div class="producer-hint">尚未指定生产方：请先将状态改回「待确认」，指定生产方后再改为「进行中」。</div>'))
       : '';
-    // 状态展示：管理员用下拉可切换；其他用户用只读徽章
-
-
-    // 状态展示：团队管理员 / 总经理用下拉可切换；其他用户（含部门主管、业务部）用只读徽章
+    // 状态展示：**所有角色都按普通徽章样式显示**（不再是下拉菜单）；
+    // 有改状态权限的用户（总经理 / 权限5「是否可以更新订单状态」= 有 的成员）徽章**可点击** ——
+    // 点击后就地变为下拉选择（见 enterStatusEdit），选好即保存；其他用户为只读徽章。
     const statusEl = canChangeStatus
-      ? \`<select class="status-select" data-status-select="\${t.id}">
-           <option value="pending"\${st === 'pending' ? ' selected' : ''}>待确认</option>
-           <option value="doing"\${st === 'doing' ? ' selected' : ''}>进行中</option>
-           <option value="done"\${st === 'done' ? ' selected' : ''}>已完成</option>
-         </select>\`
+      ? \`<span class="status-badge \${st} status-editable" data-editstatus="\${t.id}" title="点击修改订单状态（当前：\${STATUS_TEXT[st]}）">\${STATUS_TEXT[st]}</span>\`
       : \`<span class="status-badge \${st}">\${STATUS_TEXT[st]}</span>\`;
 
     // 业务主管：待办本身只读（无删除按钮），但可添加备注
@@ -3627,64 +3639,25 @@ ${isTeamHome ? teamIntroHtml(teamPlan) : ''}    <div id="listArea"${isTeamHome ?
     // 展开/折叠
     document.querySelectorAll('[data-toggle]').forEach(el => {
       el.addEventListener('click', (e) => {
-        if (e.target.closest('[data-status-select]')) return;
+        // 状态徽章 / 状态下拉 / 生产方标签 / 生产方下拉：点击用于「就地编辑」，
+        // 不触发展开 / 折叠（状态与生产方默认是普通显示，点击才变下拉）
+        if (e.target.closest('[data-editstatus]') ||
+            e.target.closest('[data-status-select]') ||
+            e.target.closest('[data-editproducer]') ||
+            e.target.closest('[data-producer-select]')) return;
         const item = el.closest('.todo-item');
         item.classList.toggle('open');
       });
     });
-    // 状态切换（仅管理员可见下拉）
+    // 状态切换（点击状态徽章后就地变为该下拉，见 enterStatusEdit）
     document.querySelectorAll('[data-status-select]').forEach(el => {
       el.addEventListener('click', (e) => e.stopPropagation());
-      el.addEventListener('change', async (e) => {
-        e.stopPropagation();
-        const id = el.getAttribute('data-status-select');
-        const t = todos.find(x => x.id === id);
-        if (!t) return;
-        const newStatus = el.value;
-        // 转入「进行中」必须指定生产方（专业版团队）：未指定时弹窗强制选择，已在标题行指定过则直接生效
-        // 试用团队没有「生产方管理」功能（无法添加生产方），不做此限制，允许直接改为「进行中」
-        if (newStatus === 'doing' && !t.producerId && teamIsPro) {
-          await openProducerPick(t, el);
-          return;
-        }
-        try {
-          await saveStatus(t, newStatus);
-        } catch (err) { alert(err.message); render(); }
-      });
+      el.addEventListener('change', onStatusSelectChange);
     });
-    // 生产方选择（仅管理员可见下拉）：待确认阶段即可直接指定
+    // 生产方选择（点击「生产方」标签后就地变为该下拉，见 enterProducerEdit）
     document.querySelectorAll('[data-producer-select]').forEach(el => {
       el.addEventListener('click', (e) => e.stopPropagation());
-      el.addEventListener('change', async (e) => {
-        e.stopPropagation();
-        const id = el.getAttribute('data-producer-select');
-        const t = todos.find(x => x.id === id);
-        if (!t) return;
-        const pid = el.value;
-        if (!pid) {
-          alert('请选择生产方（可在顶部「生产方管理」中添加）');
-          el.value = t.producerId || '';
-          return;
-        }
-        const payload = { producerId: pid };
-        // 管理员操作他人待办时需指定所属用户
-        if (t.owner) payload.owner = t.owner;
-        el.disabled = true;
-        try {
-          await api('/api/todos/' + id, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-          });
-          const p = producersCache.find(x => x.id === pid);
-          t.producerId = pid;
-          t.producerName = p ? p.username : '';
-          render();
-        } catch (err) {
-          alert(err.message);
-          render();
-        }
-      });
+      el.addEventListener('change', onProducerSelectChange);
     });
     // 交期 / 金额可点击修改（管理员，仅「待确认」的待办）
     document.querySelectorAll('[data-editdue]').forEach(el => {
@@ -4337,6 +4310,170 @@ ${isTeamHome ? teamIntroHtml(teamPlan) : ''}    <div id="listArea"${isTeamHome ?
       '</div></div>';
   }
 
+  // ---------- 状态 / 生产方的「普通显示 + 点击变下拉」内联编辑 ----------
+  // 需求：状态与生产方**默认都按普通文本样式显示**（不再是下拉菜单），点击该文本后**就地**替换为
+  //      下拉选择，选好即保存；失焦未改则原样换回。实现上只替换该 DOM 节点（不整表重绘），
+  //      因此已展开的订单在编辑过程中保持展开；点击入口用事件委托（见下方 listArea 监听）。
+
+  // 「生产方」普通显示标签的 HTML（renderItem 与 exitProducerEdit 共用）
+  function producerPickHtml(t) {
+    const short = t.producerName ||
+      (t.producerId ? ((producersCache.find(p => p.id === t.producerId) || {}).username || '') : '');
+    const text = t.producerId
+      ? (short || '已指定')
+      : (producersCache.length ? '选择生产方' : '请先添加生产方');
+    return '<div class="producer-pick' + (t.producerId ? '' : ' unset') + '"' +
+      ' data-editproducer="' + esc(t.id) + '"' +
+      ' title="' + (t.producerId
+        ? '当前生产方：' + esc(short || '已指定') + '（点击更换）'
+        : '点击选择生产方') + '">' + esc(text) + '</div>';
+  }
+
+  // 打开原生下拉列表：优先 showPicker() 直接展开（点一下即可选择）；浏览器不支持时仅聚焦，
+  // 用户再点一次下拉即可 —— 失败不影响后续操作
+  function openNativePicker(sel) {
+    sel.focus();
+    if (typeof sel.showPicker === 'function') {
+      try { sel.showPicker(); } catch (e) { /* 忽略：不支持 / 非用户手势等 */ }
+    }
+  }
+
+  // 点击「状态」徽章 → 就地换成下拉（待确认 / 进行中 / 已完成）
+  function enterStatusEdit(id) {
+    const badge = document.querySelector('[data-editstatus="' + id + '"]');
+    const t = todos.find(x => x.id === id);
+    if (!badge || !t) return;
+    const st = statusOf(t);
+    const sel = document.createElement('select');
+    sel.className = 'status-select';
+    sel.setAttribute('data-status-select', id);
+    sel.title = '选择新的订单状态（当前：' + (STATUS_TEXT[st] || st) + '）';
+    ['pending', 'doing', 'done'].forEach(function (v) {
+      const opt = document.createElement('option');
+      opt.value = v;
+      opt.textContent = STATUS_TEXT[v] || v;
+      if (v === st) opt.selected = true;
+      sel.appendChild(opt);
+    });
+    sel.addEventListener('click', function (e) { e.stopPropagation(); });
+    sel.addEventListener('change', onStatusSelectChange);
+    sel.addEventListener('blur', function () { exitStatusEdit(id); });
+    badge.parentNode.replaceChild(sel, badge);
+    openNativePicker(sel);
+  }
+
+  // 把「状态下拉」换回普通徽章（未改状态 / 保存失败时；不整表重绘 → 展开状态保持不变）
+  function exitStatusEdit(id) {
+    const sel = document.querySelector('[data-status-select="' + id + '"]');
+    if (!sel || !sel.parentNode) return;
+    const t = todos.find(x => x.id === id);
+    const st = t ? statusOf(t) : 'pending';
+    const badge = document.createElement('span');
+    badge.className = 'status-badge ' + st + ' status-editable';
+    badge.setAttribute('data-editstatus', id);
+    badge.title = '点击修改订单状态（当前：' + (STATUS_TEXT[st] || st) + '）';
+    badge.textContent = STATUS_TEXT[st] || st;
+    sel.parentNode.replaceChild(badge, sel);
+  }
+
+  // 点击「生产方」标签 → 就地换成下拉（选项来自「生产方管理」缓存）
+  function enterProducerEdit(id) {
+    const label = document.querySelector('[data-editproducer="' + id + '"]');
+    const t = todos.find(x => x.id === id);
+    if (!label || !t) return;
+    const sel = document.createElement('select');
+    sel.className = 'producer-select' + (t.producerId ? '' : ' unset');
+    sel.setAttribute('data-producer-select', id);
+    sel.title = '指定该待办的生产方';
+    sel.innerHTML = '<option value=""' + (t.producerId ? '' : ' selected') + '>' +
+      (producersCache.length ? '选择生产方' : '请先添加生产方') + '</option>' +
+      producersCache.map(function (p) {
+        return '<option value="' + esc(p.id) + '"' + (t.producerId === p.id ? ' selected' : '') + '>' +
+          esc(p.username) + '</option>';
+      }).join('');
+    sel.addEventListener('click', function (e) { e.stopPropagation(); });
+    sel.addEventListener('change', onProducerSelectChange);
+    sel.addEventListener('blur', function () { exitProducerEdit(id); });
+    label.parentNode.replaceChild(sel, label);
+    openNativePicker(sel);
+  }
+
+  // 把「生产方下拉」换回普通标签（未改 / 保存失败时）
+  function exitProducerEdit(id) {
+    const sel = document.querySelector('[data-producer-select="' + id + '"]');
+    if (!sel || !sel.parentNode) return;
+    const t = todos.find(x => x.id === id);
+    if (!t) return;
+    const wrap = document.createElement('div');
+    wrap.innerHTML = producerPickHtml(t);
+    sel.parentNode.replaceChild(wrap.firstChild, sel);
+  }
+
+  // 改状态：下拉选好后立即保存（成功后整表刷新，状态又变回普通徽章）
+  function onStatusSelectChange(e) {
+    e.stopPropagation();
+    const el = e.currentTarget;
+    const id = el.getAttribute('data-status-select');
+    const t = todos.find(x => x.id === id);
+    if (!t) return;
+    const newStatus = el.value;
+    // 值未变化：直接换回徽章（不发请求）
+    if (newStatus === statusOf(t)) { exitStatusEdit(id); return; }
+    // 转入「进行中」必须指定生产方（专业版团队）：未指定时弹窗强制选择，已在标题行指定过则直接生效
+    // 试用团队没有「生产方管理」功能（无法添加生产方），不做此限制，允许直接改为「进行中」
+    if (newStatus === 'doing' && !t.producerId && teamIsPro) {
+      openProducerPick(t, el).then(function (opened) {
+        if (!opened) exitStatusEdit(id);
+      });
+      return;
+    }
+    saveStatus(t, newStatus).catch(function (err) {
+      alert(err.message);
+      exitStatusEdit(id);
+    });
+  }
+
+  // 指定生产方：下拉选好后立即保存（成功后整表刷新，生产方又变回普通标签）
+  function onProducerSelectChange(e) {
+    e.stopPropagation();
+    const el = e.currentTarget;
+    const id = el.getAttribute('data-producer-select');
+    const t = todos.find(x => x.id === id);
+    if (!t) return;
+    const pid = el.value;
+    if (!pid || pid === t.producerId) {
+      if (!pid) alert('请选择生产方（可在顶部「生产方管理」中添加）');
+      exitProducerEdit(id);
+      return;
+    }
+    const payload = { producerId: pid };
+    // 管理员操作他人待办时需指定所属用户
+    if (t.owner) payload.owner = t.owner;
+    el.disabled = true;
+    api('/api/todos/' + id, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }).then(function () {
+      const p = producersCache.find(x => x.id === pid);
+      t.producerId = pid;
+      t.producerName = p ? p.username : '';
+      render();
+    }).catch(function (err) {
+      alert(err.message);
+      exitProducerEdit(id);
+    });
+  }
+
+  // 事件委托：点击订单行里的「状态徽章 / 生产方标签」即就地进入编辑（配合上面的函数）
+  document.getElementById('listArea').addEventListener('click', function (e) {
+    if (!e.target || !e.target.closest) return;
+    const badge = e.target.closest('[data-editstatus]');
+    if (badge) { e.stopPropagation(); enterStatusEdit(badge.getAttribute('data-editstatus')); return; }
+    const pick = e.target.closest('[data-editproducer]');
+    if (pick) { e.stopPropagation(); enterProducerEdit(pick.getAttribute('data-editproducer')); }
+  });
+
   // ---------- 待办状态保存（可同时指定生产方） ----------
   async function saveStatus(t, newStatus, producerId) {
     const payload = { status: newStatus };
@@ -4369,7 +4506,7 @@ ${isTeamHome ? teamIntroHtml(teamPlan) : ''}    <div id="listArea"${isTeamHome ?
         ? '还没有生产方，请先点击顶部「生产方管理」添加生产方'
         : '暂无生产方：请让团队管理员先在「生产方管理」中添加生产方，再把订单状态改为「进行中」');
       if (selectEl) selectEl.value = statusOf(t);
-      return;
+      return false; // 未打开弹窗：调用方据此把内联下拉换回普通显示
     }
     const sel = document.getElementById('pickProducerSelect');
     sel.innerHTML = '<option value="">请选择生产方</option>' + producers.map(p =>
@@ -4380,6 +4517,7 @@ ${isTeamHome ? teamIntroHtml(teamPlan) : ''}    <div id="listArea"${isTeamHome ?
     msg.textContent = t.producerName ? '当前生产方：' + t.producerName : '';
     picking = { todo: t, selectEl };
     document.getElementById('producerPickModal').classList.add('show');
+    return true;
   }
 
   function closeProducerPick() {
@@ -4388,7 +4526,10 @@ ${isTeamHome ? teamIntroHtml(teamPlan) : ''}    <div id="listArea"${isTeamHome ?
     const selectEl = picking.selectEl;
     picking = null;
     document.getElementById('producerPickModal').classList.remove('show');
-    if (selectEl) selectEl.value = statusOf(todo);
+    // 取消选择：把「就地编辑」的下拉换回普通显示（状态未改）
+    const id = selectEl && selectEl.getAttribute ? selectEl.getAttribute('data-status-select') : null;
+    if (id) exitStatusEdit(id);
+    else if (selectEl) selectEl.value = statusOf(todo);
   }
 
   document.getElementById('btnCancelPickProducer').addEventListener('click', closeProducerPick);
