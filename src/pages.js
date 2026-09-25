@@ -601,9 +601,323 @@ ${canRegister ? LOGIN_REGISTER_CARD : ""}
 //   避免首屏先闪一下「订单管理系统」再变成团队名
 // adCode：试用版（未订阅 / 订阅已到期）页面顶部「广告位」的广告代码（HTML 片段），
 //   由超级管理员在控制台「系统设置」中维护；服务端仅在非专业版团队下传入（专业版传空串）。
-export function todoPage(favicon, canPlaceOrder, siteName, adCode) {
+// ============ 团队管理员首页：系统介绍与使用说明 ============
+// 说明：团队账号本人（团队管理员）**不再提供订单列表功能** —— 登录后的首页固定为
+//      「系统介绍 + 使用说明」，并**按版本分别编写**（试用版 / 订阅版=专业版）：
+//        · 页面同时输出两套内容（data-ver="trial" / data-ver="pro"）；
+//        · 前端脚本按 /api/me 的 pro 字段给 #introArea 设置 data-plan，
+//          CSS 只显示与当前版本匹配的那一套 —— 订阅 / 续费成功后自动切换。
+//      两个版本一致的部分（系统介绍 / 角色权限 / 订单状态 / 成员权限开关）抽成下面的常量，
+//      各自的「版本说明 + 使用说明」单独编写（INTRO_TRIAL / INTRO_PRO）。
+//      约定：第「一」节为版本说明（各版本不同），「二 ~ 五」节为公共内容，
+//            「六、使用说明」「七、小贴士」为各版本的操作步骤。
+
+// 「二、系统介绍」（两个版本一致）
+const INTRO_ABOUT = `
+      <div class="intro-card">
+        <h2>二、系统介绍</h2>
+        <p>本系统是面向中小工厂 / 外贸团队的<b>订单协同与生产跟踪平台</b>：团队成员录入客户订单，
+        订单在团队内按「<b>待确认 → 进行中 → 已完成</b>」流转，采购文件、脱敏订单文件、出货日期都挂在同一张订单上，
+        生产方 / 客户 / 业务主管各取所需。</p>
+        <ul class="intro-list">
+          <li><b>一个团队一个空间</b>：您注册的团队账号即一个独立团队（团队名称可修改），团队内的成员、生产方、客户与订单
+          <b>按团队隔离</b> —— 其他团队完全看不到您的数据，也无法跨团队操作。</li>
+          <li><b>角色分工清晰</b>：团队管理员负责「团队设置 / 成员 / 生产方 / 客户 / 订阅」，订单由成员录入与流转，
+          生产方与客户只看与自己相关的订单（详见下一节）。</li>
+          <li><b>浏览器直接使用</b>：无需安装客户端，电脑 / 手机 / 平板（自适应排版）打开同一个网址登录即可，多人可同时在线协同。</li>
+          <li><b>订单信息完整</b>：客户、PO#（订单号）、交期、币种（美元 / 人民币）、金额、订单文件链接、采购文件链接、
+          脱敏订单文件链接、出货日期、生产方、备注（可 @ 同事）。</li>
+          <li><b>站内消息</b>：在订单备注里 @ 同事用户名，对方登录后顶栏会出现角标提醒（点击查看「@我的」）。</li>
+          <li><b>团队管理员不显示订单列表</b>：为避免与成员职责重叠，团队账号本人<b>不录入订单、也不显示订单列表</b>
+          —— 登录后的首页就是这页系统介绍与使用说明，订单的录入与流转全部由团队成员完成。</li>
+        </ul>
+      </div>
+`;
+// 「三、角色与权限（本团队）」（两个版本一致）
+const INTRO_ROLES = `
+      <div class="intro-card">
+        <h2>三、角色与权限（本团队）</h2>
+        <div class="intro-table-wrap">
+          <table class="intro-table">
+            <thead>
+              <tr><th>角色</th><th>由谁创建</th><th>能做什么</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><b>团队管理员</b><br><span class="intro-dim">当前登录账号</span></td>
+                <td>注册开通（超级管理员管理）</td>
+                <td>团队设置（团队名称）、<b>成员管理</b>（权限开关 + 客户分配）、<b>生产方管理</b>、<b>客户管理</b>、
+                订阅 / 续费；<b>不录入订单，也不显示订单列表</b>（首页即本页系统介绍与使用说明）</td>
+              </tr>
+              <tr>
+                <td><b>普通成员</b><br><span class="intro-dim">职位如：业务员 / 采购 / 主管</span></td>
+                <td>团队管理员在「成员管理」中添加</td>
+                <td>在自己被分配的客户下<b>录入订单</b>、维护自己的订单、添加备注；按团队管理员开通的权限
+                补填采购文件 / 脱敏订单文件 / 出货日期、查看客户订单文件、更新订单状态</td>
+              </tr>
+              <tr>
+                <td><b>生产方</b></td>
+                <td>团队管理员在「生产方管理」中添加</td>
+                <td>只读查看<b>指定给自己</b>的订单（进行中 / 已完成），可打开订单文件、添加备注</td>
+              </tr>
+              <tr>
+                <td><b>客户</b></td>
+                <td>团队管理员在「客户管理」中添加</td>
+                <td>只读查看<b>本客户名下</b>的订单（进行中 / 已完成），可打开订单文件、添加备注</td>
+              </tr>
+              <tr>
+                <td><b>历史账号</b><br><span class="intro-dim">总经理 / 部门主管 / 业务主管 / 生产部</span></td>
+                <td>升级前创建（新增成员已不再提供这些分类）</td>
+                <td>只读或部分管理本团队订单（如指定生产方、修改待确认订单、添加备注）；<b>不录入订单</b></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+`;
+// 「四、订单状态与关键操作」（两个版本一致；版本差异见各版本第一节）
+const INTRO_FLOW = `
+      <div class="intro-card">
+        <h2>四、订单状态与关键操作</h2>
+        <div class="intro-table-wrap">
+          <table class="intro-table">
+            <thead>
+              <tr><th>状态</th><th>含义</th><th>可见 / 操作</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><span class="intro-tag pending">待确认</span></td>
+                <td>成员录入订单后的默认状态；此时 PO# / 交期 / 金额 / 订单文件链接仍可在订单行上修改</td>
+                <td>录入者本人 + 有权限的成员</td>
+              </tr>
+              <tr>
+                <td><span class="intro-tag doing">进行中</span></td>
+                <td>订单已确认投产（改为「进行中」时需指定生产方，详见第一节的版本说明）；进入该状态后不可再改 PO# / 交期 / 金额</td>
+                <td>本团队可见（按角色范围）</td>
+              </tr>
+              <tr>
+                <td><span class="intro-tag done">已完成</span></td>
+                <td>订单交付完成；列表里折叠显示，可点「加载更多」逐批展开</td>
+                <td>本团队可见（按角色范围）</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <ul class="intro-list">
+          <li><b>交期配色</b>：当前日期已过交期显示<b>红色</b>、剩余 1~14 天显示<b>黄色</b>、剩余 14 天以上显示<b>绿色</b>，一眼看出紧急程度。</li>
+          <li><b>订单文件链接（客户订单）</b>：录入订单时填写（须以 http:// 或 https:// 开头，可留空）；有权限的成员点击 PO# 即可打开。</li>
+          <li><b>采购文件链接（生产订单）</b>：订单行上黄色的「自产单 / 外购单」标签表示<b>尚未填写采购文件</b>，
+          有权限的成员点击即可补填（不影响订单状态）；已填写时标签为灰色，点击直接打开。</li>
+          <li><b>脱敏订单文件链接</b>：订单号右侧的「回形针」图标 —— 灰色 = 未填写（有权限者可点击补填），蓝色 = 已填写（点击打开）。</li>
+          <li><b>出货日期</b>：「交期」右侧的灰色区块，有权限的成员点击即可为订单添加出货日期（每单只能添加一次）。</li>
+          <li><b>备注与 @ 提醒</b>：每条订单都可追加备注（不可删除）；备注里写 <b>@成员用户名</b>，对方顶栏登录名左侧会出现站内消息角标。</li>
+        </ul>
+      </div>
+`;
+// 「五、成员权限开关」（两个版本一致：都在「成员管理」的成员列表中逐个设置）
+const INTRO_PERMS = `
+      <div class="intro-card">
+        <h2>五、成员权限开关（在「成员管理」中逐个设置）</h2>
+        <p>新增成员统一为<b>普通成员</b>，只需填写用户名 / 密码 / <b>职位</b>（如业务员、采购、主管）；
+        具体能做什么，在成员列表里按下面这些开关逐项设定：</p>
+        <div class="intro-table-wrap">
+          <table class="intro-table">
+            <thead>
+              <tr><th>权限 / 名单</th><th>默认</th><th>说明</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>可录入订单客户列表</td>
+                <td><span class="intro-tag auto">自动</span></td>
+                <td>权限1「添加订单」：列表里<b>有客户</b>才会显示录入区（没有客户则看不到录单入口，接口也会拦截）；客户来自「客户管理」</td>
+              </tr>
+              <tr>
+                <td>是否可查看全部订单</td>
+                <td><span class="intro-tag auto">自动「是」</span></td>
+                <td>「可查看客户列表」留空 = 可查看<b>本团队全部订单</b>（他人订单只读、可加备注）；
+                选定 N 个客户后自动变为「否」= 只能看<b>自己录入的订单 + 这 N 个客户的订单</b></td>
+              </tr>
+              <tr>
+                <td>可选生产方列表</td>
+                <td><span class="intro-tag off">默认「无」</span></td>
+                <td>授权后，该成员录单时可从下拉直接指定这些生产方（不指定则后续由团队指定）</td>
+              </tr>
+              <tr>
+                <td>权限2 是否可以查看客户订单</td>
+                <td><span class="intro-tag off">默认「无」</span></td>
+                <td>= 有：点击订单号 PO# 打开<b>客户订单文件</b>（订单文件链接）</td>
+              </tr>
+              <tr>
+                <td>权限3 是否可以下生产订单</td>
+                <td><span class="intro-tag off">默认「无」</span></td>
+                <td>= 有：点击黄色「自产单 / 外购单」标签<b>补填采购文件链接</b></td>
+              </tr>
+              <tr>
+                <td>权限4 是否可以查看生产订单</td>
+                <td><span class="intro-tag off">默认「无」</span></td>
+                <td>= 有：点击已填链接的「自产单 / 外购单」标签打开<b>采购文件</b></td>
+              </tr>
+              <tr>
+                <td>权限5 是否可以更新订单状态</td>
+                <td><span class="intro-tag off">默认「无」</span></td>
+                <td>= 有：在<b>自己可见的订单范围内</b>与团队管理员相同 —— 可改状态、指定生产方、修改待确认订单、删除订单
+                （<b>不扩大可见范围</b>：能看到的订单仍由「是否可查看全部订单 / 可查看客户列表」决定）</td>
+              </tr>
+              <tr>
+                <td>权限6 是否可以下脱敏订单</td>
+                <td><span class="intro-tag off">默认「无」</span></td>
+                <td>= 有：点击订单号右侧的灰色「回形针」<b>补填脱敏订单文件链接</b></td>
+              </tr>
+              <tr>
+                <td>权限7 是否可以添加出货日期</td>
+                <td><span class="intro-tag off">默认「无」</span></td>
+                <td>= 有：点击「交期」右侧的灰色空白区块<b>添加出货日期</b></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="intro-note">提示：权限改动对成员<b>即时生效</b> —— 成员端无需重新登录，最多 1 分钟自动同步（刷新页面立即生效）。</p>
+      </div>
+`;
+// 「试用版（未订阅 / 订阅已到期）」首页内容：一、版本说明 + 二~五 公共部分 + 六、使用说明 + 七、小贴士
+const INTRO_TRIAL = `
+      <div class="intro-hero">
+        <span class="intro-ver-tag trial">试用版</span>
+        <h1>系统介绍与使用说明</h1>
+        <p class="intro-sub">您当前使用的是<b>试用版</b>：<b>无限期试用</b>，功能与订阅版（专业版）基本相同，
+        <b>仅数量受限</b>（成员 / 生产方 / 客户），且页面顶部含一行广告位；订阅后即可解除限制、移除广告位。</p>
+        <p class="intro-sub intro-dim">本团队当前已使用：成员 <b id="introTrialMembers">—</b> ·
+        生产方 <b id="introTrialProducers">—</b> · 客户 <b id="introTrialCustomers">—</b>（格式：已用 / 上限）</p>
+      </div>
+
+      <div class="intro-card">
+        <h2>一、本版本功能说明（试用版）</h2>
+        <ul class="intro-list">
+          <li><b>有效期</b>：<b>无限期试用</b> —— 不会到期，也不会因此被阻止登录，随时可订阅升级。</li>
+          <li><b>使用人数</b>：成员最多 <b>2 个</b>、生产方最多 <b>1 个</b>、客户最多 <b>1 个</b>
+          （达到上限时「添加」按钮置灰，并提示订阅可解除限制）。</li>
+          <li><b>页面广告位</b>：试用版页面顶部会显示一行广告位（由平台维护），订阅为订阅版后自动移除。</li>
+          <li><b>订单录入</b>：与订阅版一致 —— <b>团队管理员本人不录入订单</b>，订单由团队成员录入（详见第六节使用说明）。</li>
+          <li><b>订单状态流转</b>：<b>尚未添加生产方</b>时可直接把订单改为「进行中」；<b>已添加生产方</b>后必须先指定生产方才能改为「进行中」。</li>
+          <li><b>订阅升级</b>：点顶栏「<b>订阅</b>」→ 选择套餐（1 个月 / 1 年 / 3 年 / 5 年）→ 提交订阅申请，
+          平台超级管理员开通后即为<b>订阅版</b>（数量不限 + 无广告位）；开通前按钮显示「订阅申请已提交」，可再次点击修改后重新提交。</li>
+        </ul>
+      </div>
+${INTRO_ABOUT}${INTRO_ROLES}${INTRO_FLOW}${INTRO_PERMS}
+      <div class="intro-card">
+        <h2>六、使用说明（试用版，共 8 步）</h2>
+        <ol class="intro-steps">
+          <li><b>设置团队名称</b>：点顶栏「团队设置」，修改并保存团队名称（页面左上角与登录后显示的名称同步更新）。</li>
+          <li><b>添加生产方（最多 1 个）</b>：点顶栏「生产方管理」→ 填写「用户名 / 密码 / 说明 + 性质（自产 / 外购）」→ 添加；
+          生产方用该账号登录后，只能看到指定给自己的订单。</li>
+          <li><b>添加客户（最多 1 个）</b>：点顶栏「客户管理」→ 填写「用户名（即客户名称）/ 密码 / 说明」→ 添加；
+          客户用该账号登录后，只能看到本客户名下的订单。</li>
+          <li><b>添加成员并分配客户（最多 2 个）</b>：点顶栏「成员管理」→ 填写「用户名 / 密码 / 职位」→ 添加成员；再在成员列表中为该成员：
+            ① 在「可录入订单客户列表」里分配客户（有客户该成员才能录单）；
+            ② 在「可查看客户列表」里设定其订单可见范围（留空 = 可查看全部订单）；
+            ③ 按需开通权限2~权限7 与「可选生产方列表」。</li>
+          <li><b>让成员登录录入订单</b>：团队管理员本人不录入订单 —— 把登录网址与成员账号发给对应同事，
+          由成员登录后在「添加新订单」录入区填写客户 / 订单号 / 交期 / 币种 / 金额 / 订单文件链接并添加（新订单为「待确认」）。</li>
+          <li><b>订单流转</b>：由有权限的成员（权限5「是否可以更新订单状态」= 有）在订单行上把状态从「待确认」改为「进行中」
+          （试用团队没有生产方时可直接改；已添加生产方后需先指定生产方），交付完成后改为「已完成」。</li>
+          <li><b>补填与跟踪</b>：采购文件链接（黄色「自产单 / 外购单」标签）、脱敏订单文件链接（订单号右侧「回形针」）、
+          出货日期（「交期」右侧灰色区块）由有权限的成员直接在订单行上补填；备注里 @ 同事会触发站内消息提醒。</li>
+          <li><b>需要更多成员 / 生产方 / 客户，或想移除广告位</b>：点顶栏「订阅」→ 选择套餐 → 提交订阅申请，
+          平台超级管理员开通后即为订阅版（数量不限 + 无广告位 + 有效期顺延）。</li>
+        </ol>
+      </div>
+
+      <div class="intro-card">
+        <h2>七、小贴士（试用版）</h2>
+        <ul class="intro-list">
+          <li>顶栏右侧：<b>修改密码</b>（修改自己的登录密码）、<b>退出</b>；登录名左侧的数字角标是「@我的」站内消息提醒。</li>
+          <li>团队账号本人（团队管理员）<b>不显示订单列表</b>，因此顶栏不再有订单相关操作；订单的录入、状态流转与补填由成员完成。</li>
+          <li>成员 / 生产方 / 客户账号都由本页顶栏的管理入口创建，登录密码由您设置；忘记密码时可在对应的管理弹窗里点「重置密码」。</li>
+          <li>数量达到上限后先订阅升级（数量不限），即可继续添加成员 / 生产方 / 客户。</li>
+        </ul>
+      </div>
+`;
+// 「订阅版 / 专业版（在有效期内）」首页内容：一、版本说明 + 二~五 公共部分 + 六、使用说明 + 七、小贴士
+const INTRO_PRO = `
+      <div class="intro-hero">
+        <span class="intro-ver-tag pro">订阅版</span>
+        <h1>系统介绍与使用说明</h1>
+        <p class="intro-sub">您当前使用的是<b>订阅版（专业版）</b>：<b>成员 / 生产方 / 客户数量不限</b>、<b>页面无广告位</b>，
+        有效期至 <b id="introProExpire">—</b>（<b id="introProDays">—</b>）；剩余不足 30 天时顶栏按钮会变为「续费」。</p>
+      </div>
+
+      <div class="intro-card">
+        <h2>一、本版本功能说明（订阅版）</h2>
+        <ul class="intro-list">
+          <li><b>有效期</b>：以顶栏版本徽章为准（如「专业版 · 有效期至 2026-10-24（剩余 88 天）」）；
+          剩余不足 30 天时徽章转为橙色提醒，同时顶栏出现「<b>续费</b>」按钮。</li>
+          <li><b>使用人数</b>：成员 / 生产方 / 客户<b>均不限数量</b>，可随业务规模自由添加。</li>
+          <li><b>页面广告位</b>：<b>无广告位</b>（页面更干净，也可直接发给客户 / 生产方使用）。</li>
+          <li><b>订单录入</b>：<b>团队管理员本人不录入订单</b>，订单由团队成员录入（团队管理员负责团队、成员、生产方、客户与订阅管理）。</li>
+          <li><b>订单状态流转</b>：把订单从「待确认」改为「进行中」时<b>必须先指定生产方</b>
+          （未指定会弹出「指定生产方」窗口；如需更换生产方，先把状态改回「待确认」）。</li>
+          <li><b>到期与续费</b>：订阅到期后自动回落为<b>试用状态</b>（仍可登录，功能基本相同，但数量受限 + 页面顶部重新出现广告位），
+          点顶栏「续费」→ 选择套餐 → 提交续费申请，开通后有效期从「当前时间」与「原到期时间」中较晚者起顺延。</li>
+        </ul>
+      </div>
+${INTRO_ABOUT}${INTRO_ROLES}${INTRO_FLOW}${INTRO_PERMS}
+      <div class="intro-card">
+        <h2>六、使用说明（订阅版，共 8 步）</h2>
+        <ol class="intro-steps">
+          <li><b>设置团队名称</b>：点顶栏「团队设置」，修改并保存团队名称（页面左上角与登录后显示的名称同步更新）。</li>
+          <li><b>添加生产方（不限数量）</b>：点顶栏「生产方管理」→ 填写「用户名 / 密码 / 说明 + 性质（自产 / 外购）」→ 添加；
+          生产方用该账号登录后，只能看到指定给自己的订单。</li>
+          <li><b>添加客户（不限数量）</b>：点顶栏「客户管理」→ 填写「用户名（即客户名称）/ 密码 / 说明」→ 添加；
+          客户用该账号登录后，只能看到本客户名下的订单。</li>
+          <li><b>添加成员并分配客户（不限数量）</b>：点顶栏「成员管理」→ 填写「用户名 / 密码 / 职位」→ 添加成员；再在成员列表中为该成员：
+            ① 在「可录入订单客户列表」里分配客户（有客户该成员才能录单）；
+            ② 在「可查看客户列表」里设定其订单可见范围（留空 = 可查看全部订单）；
+            ③ 按需开通权限2~权限7 与「可选生产方列表」（订单量大时，可给业务主管 / 计划岗位开通权限5，由其在可见范围内流转订单）。</li>
+          <li><b>让成员登录录入订单</b>：团队管理员本人不录入订单 —— 把登录网址与成员账号发给对应同事，
+          由成员登录后在「添加新订单」录入区填写客户 / 订单号 / 交期 / 币种 / 金额 / 订单文件链接并添加（新订单为「待确认」）。</li>
+          <li><b>订单流转</b>：由有权限的成员（权限5「是否可以更新订单状态」= 有）在订单行上把状态从「待确认」改为「进行中」
+          —— 此时<b>必须先指定生产方</b>（下拉或弹窗选择），交付完成后改为「已完成」。</li>
+          <li><b>补填与跟踪</b>：采购文件链接（黄色「自产单 / 外购单」标签）、脱敏订单文件链接（订单号右侧「回形针」）、
+          出货日期（「交期」右侧灰色区块）由有权限的成员直接在订单行上补填；备注里 @ 同事会触发站内消息提醒。</li>
+          <li><b>到期前续费</b>：关注顶栏徽章剩余天数，剩余不足 30 天时点「续费」→ 选择套餐 → 提交续费申请，
+          由平台超级管理员开通后有效期顺延；已提交的申请在开通前按钮显示「续费申请已提交」。</li>
+        </ol>
+      </div>
+
+      <div class="intro-card">
+        <h2>七、小贴士（订阅版）</h2>
+        <ul class="intro-list">
+          <li>顶栏右侧：<b>修改密码</b>（修改自己的登录密码）、<b>退出</b>；登录名左侧的数字角标是「@我的」站内消息提醒。</li>
+          <li>团队账号本人（团队管理员）<b>不显示订单列表</b>，因此顶栏不再有订单相关操作；订单的录入、状态流转与补填由成员完成。</li>
+          <li>成员 / 生产方 / 客户账号都由本页顶栏的管理入口创建，登录密码由您设置；忘记密码时可在对应的管理弹窗里点「重置密码」。</li>
+          <li>过期不会锁账号：订阅到期后自动回落为试用状态（可继续使用，仅数量受限 + 出现广告位），随时续费即可恢复。</li>
+        </ul>
+      </div>
+`;
+
+// 团队管理员首页 HTML：同时输出两套内容，由前端脚本按当前版本显示其中一套
+//（#introArea 的 data-plan = trial / pro，与 data-ver 匹配的版本块才会显示；
+//  首屏的 data-plan 由服务端按当前订阅状态预置，避免刷新后出现空白/闪动）
+function teamIntroHtml(plan) {
+  const ver = plan === 'pro' ? 'pro' : 'trial';
+  return `
+  <!-- 团队管理员（团队账号本人）首页：系统介绍 + 使用说明（按版本分别编写：试用版 / 订阅版） -->
+  <div class="intro-area" id="introArea" data-plan="${ver}">
+    <div class="intro-ver" data-ver="trial">
+${INTRO_TRIAL}    </div>
+    <div class="intro-ver" data-ver="pro">
+${INTRO_PRO}    </div>
+  </div>
+`;
+}
+
+export function todoPage(favicon, canPlaceOrder, siteName, adCode, teamAdmin, teamPro) {
   // 省略参数时按「显示」处理（与历史行为一致）；显式 false 才隐藏
   const addRowHidden = canPlaceOrder === false;
+  // 团队账号本人（团队管理员）：**不再提供订单列表功能** —— 首页固定为
+  // 「系统介绍 + 使用说明」（按试用版 / 订阅版分别编写，见 INTRO_TRIAL / INTRO_PRO）
+  const isTeamHome = teamAdmin === true;
+  const teamPlan = teamPro === true ? 'pro' : 'trial';
   const pageName = String(siteName === undefined || siteName === null ? '' : siteName).trim() ||
     '订单管理系统';
   // 广告位（试用版）：为空则不输出该区块（专业版团队 / 未配置广告代码时都不显示）
@@ -619,7 +933,7 @@ export function todoPage(favicon, canPlaceOrder, siteName, adCode) {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>我的待办 - ${escapeText(pageName)}</title>
+<title>${isTeamHome ? '系统介绍与使用说明' : '我的待办'} - ${escapeText(pageName)}</title>
 ${faviconTag(favicon)}
 <style>
 ${commonStyle}
@@ -1708,6 +2022,103 @@ ${commonStyle}
     .todo-title { min-width: 4.5em; }
   }
 
+  /* ================= 团队管理员首页：系统介绍与使用说明（#introArea） ================= */
+  /* 两套版本内容（试用版 / 订阅版）默认都隐藏：脚本按当前账号版本给 #introArea 设置
+     data-plan（trial / pro），只显示与 data-ver 匹配的那一套（订阅后自动切换） */
+  .intro-area .intro-ver { display: none; }
+  .intro-area[data-plan="trial"] .intro-ver[data-ver="trial"] { display: block; }
+  .intro-area[data-plan="pro"] .intro-ver[data-ver="pro"] { display: block; }
+  /* 版本头（版本标签 + 标题 + 一句话说明） */
+  .intro-hero {
+    background: #fff;
+    border: 1px solid #ebebe8;
+    border-radius: 10px;
+    padding: 20px 22px;
+    margin-bottom: 14px;
+    box-shadow: 0 1px 2px rgba(15,15,15,0.04);
+  }
+  .intro-hero h1 { font-size: 21px; font-weight: 600; margin: 10px 0 8px; }
+  .intro-ver-tag {
+    display: inline-block;
+    font-size: 12px;
+    font-weight: 600;
+    border-radius: 10px;
+    padding: 2px 9px;
+  }
+  /* 试用版：绿色系；订阅版：蓝色系（与顶栏版本徽章呼应） */
+  .intro-ver-tag.trial { color: #0f7b6c; background: #e6f4ee; }
+  .intro-ver-tag.pro { color: #2383e2; background: #e7f0fb; }
+  .intro-sub { font-size: 13.5px; line-height: 1.9; color: #4a4a47; }
+  .intro-dim { color: #9b9a97; font-size: 12.5px; }
+  /* 分区卡片（与订单卡片同风格） */
+  .intro-card {
+    background: #fff;
+    border: 1px solid #ebebe8;
+    border-radius: 10px;
+    padding: 18px 22px 16px;
+    margin-bottom: 14px;
+    box-shadow: 0 1px 2px rgba(15,15,15,0.04);
+  }
+  .intro-card h2 {
+    font-size: 15.5px;
+    font-weight: 600;
+    color: #37352f;
+    padding-bottom: 8px;
+    margin-bottom: 10px;
+    border-bottom: 1px solid #f1f1ef;
+  }
+  .intro-card p { font-size: 13.5px; line-height: 1.9; color: #4a4a47; margin-bottom: 8px; }
+  .intro-list, .intro-steps { padding-left: 20px; }
+  .intro-list li, .intro-steps li {
+    font-size: 13.5px;
+    line-height: 1.9;
+    color: #4a4a47;
+    margin-bottom: 6px;
+  }
+  .intro-list li b, .intro-steps li b { color: #37352f; }
+  .intro-note {
+    font-size: 12.5px;
+    color: #9b9a97;
+    background: #f7f7f5;
+    border-radius: 6px;
+    padding: 8px 10px;
+    line-height: 1.8;
+  }
+  /* 小标签（订单状态 / 权限默认值） */
+  .intro-tag {
+    display: inline-block;
+    font-size: 11.5px;
+    border-radius: 4px;
+    padding: 1px 7px;
+    white-space: nowrap;
+  }
+  .intro-tag.pending { color: #d9730d; background: #fdf0e3; }
+  .intro-tag.doing { color: #2383e2; background: #e7f0fb; }
+  .intro-tag.done { color: #0f7b6c; background: #e6f4ee; }
+  .intro-tag.auto { color: #2383e2; background: #e7f0fb; }
+  .intro-tag.off { color: #9b9a97; background: #f1f1ef; }
+  /* 表格（窄屏横向滚动，避免文字被挤压） */
+  .intro-table-wrap { overflow-x: auto; margin-bottom: 6px; }
+  .intro-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .intro-table th, .intro-table td {
+    text-align: left;
+    vertical-align: top;
+    padding: 8px 10px;
+    border-bottom: 1px solid #f1f1ef;
+    line-height: 1.8;
+    color: #4a4a47;
+  }
+  .intro-table th { color: #6b6b68; font-weight: 600; background: #fbfbfa; white-space: nowrap; }
+  .intro-table td b { color: #37352f; }
+  .intro-table tr:last-child td { border-bottom: none; }
+  @media (max-width: 700px) {
+    .intro-hero { padding: 16px 14px; }
+    .intro-hero h1 { font-size: 18px; }
+    .intro-card { padding: 14px 14px 12px; }
+    .intro-list, .intro-steps { padding-left: 18px; }
+    .intro-table { font-size: 12.5px; min-width: 460px; }
+  }
+
   /* ================= 手机 / 平板自适应（媒体查询；统一放在样式末尾，避免被上面的同优先级规则覆盖） ================= */
 
   /* 平板（≤ 900px）：顶栏与内容留白收紧 */
@@ -1831,7 +2242,7 @@ ${adBlock}
         title="给本订单指定生产方（由团队管理员在「成员管理」的「可选生产方列表」中授权，默认「无」）"></select>
       <button class="btn-add" id="btnAdd">添加</button>
     </div>
-    <div id="listArea"></div>
+${isTeamHome ? teamIntroHtml(teamPlan) : ''}    <div id="listArea"${isTeamHome ? ' style="display:none"' : ''}></div>
   </div>
 
 
@@ -2326,6 +2737,8 @@ ${adBlock}
     // 顶栏团队徽章与「订阅 / 续费」按钮
     renderTeamBadge();
     updateSubscribeButton();
+    // 团队账号本人：首页 = 系统介绍 + 使用说明（按当前版本显示对应的一套内容）
+    renderTeamHome();
   }
 
   // 重新拉取 /api/me 并同步权限标记；权限有变化时返回 true（调用方可据此重新渲染列表）
@@ -2350,6 +2763,9 @@ ${adBlock}
   // 定时 / 切回标签页时自动同步权限（管理员改动权限后，成员端最多 1 分钟自动生效）
   async function syncPermsAndRender() {
     const changed = await refreshMe();
+    // 团队账号本人（团队管理员）：首页是「系统介绍 + 使用说明」，没有订单列表 —— 不刷新订单
+    //（renderTeamHome 已随 applyUserFlags 一起执行：顶栏徽章 / 订阅按钮 / 介绍页版本随之更新）
+    if (isTeamAdmin) return;
     if (changed) {
       try { await loadTodos(); return; } catch (e) { /* 忽略：保持当前列表 */ }
     }
@@ -2383,6 +2799,8 @@ ${adBlock}
 
     await loadSettings();
     await loadCustomers();
+    // 团队账号本人（团队管理员）：首页为「系统介绍 + 使用说明」，**没有订单列表** —— 不加载订单
+    if (isTeamAdmin) return;
     await loadTodos();
   }
 
@@ -2449,6 +2867,48 @@ ${adBlock}
         ? '专业版剩余不足 30 天，点击选择套餐续费'
         : '试用版数量受限（成员 2 个 / 生产方 1 个 / 客户 1 个）且页面顶部含广告位；点击订阅升级为专业用户，即可解除限制并移除广告');
     btn.style.display = '';
+  }
+
+  // ---------- 团队管理员首页：系统介绍与使用说明 ----------
+  // 团队账号本人（团队管理员）**不再提供订单列表功能**：登录后的首页固定为
+  // 「系统介绍 + 使用说明」，并按当前版本显示对应的一套内容（试用版 / 订阅版）——
+  // 订阅 / 续费生效后会自动切换（data-plan）。
+  function setIntroText(id, text) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = text;
+  }
+  function renderTeamHome() {
+    const area = document.getElementById('introArea');
+    if (!area) return;
+    const list = document.getElementById('listArea');
+    if (!isTeamAdmin) {
+      // 其他角色（成员 / 生产方 / 客户 / 历史账号等）：首页仍是订单列表
+      area.style.display = 'none';
+      if (list) list.style.display = '';
+      return;
+    }
+    // 版本：专业版有效期内 = pro（订阅版）；未订阅 / 订阅已到期 = trial（试用版）
+    area.setAttribute('data-plan', isProTeam ? 'pro' : 'trial');
+    if (isProTeam) {
+      // 订阅版：有效期 + 剩余天数
+      const expires = (currentUser.expiresAt || '').slice(0, 10);
+      const days = daysLeft(currentUser.expiresAt);
+      setIntroText('introProExpire', expires || '—');
+      setIntroText('introProDays', days >= 0 ? '剩余 ' + days + ' 天' : '已到期');
+    } else {
+      // 试用版：成员 / 生产方 / 客户的「已用 / 上限」（来自 /api/me 的 trialLimits）
+      const limits = currentUser.trialLimits || {};
+      const used = function (key, fallbackMax) {
+        const item = limits[key] || {};
+        return (item.used || 0) + ' / ' + (item.max || fallbackMax || 0);
+      };
+      setIntroText('introTrialMembers', used('members', 2));
+      setIntroText('introTrialProducers', used('producers', 1));
+      setIntroText('introTrialCustomers', used('customers', 1));
+    }
+    area.style.display = '';
+    // 团队管理员不显示订单列表（订单由成员录入与流转）
+    if (list) list.style.display = 'none';
   }
 
   // 客户输入框（仅团队成员录单时需要）：
@@ -3170,6 +3630,9 @@ ${adBlock}
         }
         // 点击某条消息后直接关闭消息清单
         document.getElementById('mentionsModal').classList.remove('show');
+        // 团队账号本人（团队管理员）：首页是「系统介绍 + 使用说明」，没有订单列表 ——
+        // 点开消息只标记已读（不尝试展开订单，也不提示「不在当前列表中」）
+        if (isTeamAdmin) return;
         // 同时展开对应待办（若在当前列表中）
         const item = document.querySelector('.todo-item[data-id="' + m.todoId + '"]');
         if (item) {

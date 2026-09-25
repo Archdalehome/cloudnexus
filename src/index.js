@@ -3540,6 +3540,18 @@ async function handleApi(request, env, pathname) {
   if (pathname === "/api/todos" && method === "GET") {
     const user = await getCurrentUser(request, env);
     if (!user) return json({ error: "未登录" }, 401);
+    // 团队账号本人（团队管理员）：**已取消订单列表功能** —— 登录后的首页固定为
+    // 「系统介绍 + 使用说明」，订单一律由团队成员录入与流转；即使直接调用接口也不返回订单。
+    if (isTeamAdmin(user.role)) {
+      return json(
+        {
+          error:
+            "团队账号不提供订单列表：首页为「系统介绍与使用说明」，订单由团队成员录入与流转" +
+            "（团队管理员负责团队设置 / 成员管理 / 生产方管理 / 客户管理 / 订阅）",
+        },
+        403
+      );
+    }
     const teamId = teamIdOf(user);
     // 注：权限5「是否可以更新订单状态」**不会扩大可见范围** ——
     // 可见范围只由「是否可查看全部订单 / 可查看客户列表」决定（见下方普通成员分支）；
@@ -4175,7 +4187,11 @@ export default {
       // 「系统设置」中维护；订阅为专业版后不再输出（广告位随之消失）。
       const pro = user ? await isProTeamOf(env, user) : false;
       const adCode = !pro ? g.adCode : "";
-      return new Response(todoPage(g.favicon, canPlaceOrder, siteName, adCode), {
+      // 团队账号本人（团队管理员）：**不再提供订单列表功能** —— 登录后的首页固定为
+      // 「系统介绍 + 使用说明」（按试用版 / 订阅版分别渲染，见 pages.js 的 INTRO_TRIAL / INTRO_PRO），
+      // 因此服务端就按该角色输出介绍页、隐藏订单列表容器（避免先渲染列表再被脚本隐藏的闪现）。
+      const teamAdmin = !!user && isTeamAdmin(user.role);
+      return new Response(todoPage(g.favicon, canPlaceOrder, siteName, adCode, teamAdmin, pro), {
         headers: { "Content-Type": "text/html; charset=utf-8" },
       });
     }
