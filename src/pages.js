@@ -2077,11 +2077,42 @@ ${commonStyle}
     font-size: 12.5px;
     color: #9b9a97;
   }
+  /* 「添加订单」开关行（**仅手机端显示**：订单录入区默认隐藏，点该按钮展开 / 收起）：
+     桌面端该行始终 display:none、录入区照旧常显 → **桌面端显示完全不变**；
+     该行只在「有录单权限」时（服务端 / 前端判定）渲染 .show，无录单权限的用户不显示该行。 */
+  .add-toggle-row { display: none; }
+  .btn-add-toggle {
+    width: 100%;
+    background: #2383e2;
+    color: #fff;
+    padding: 11px 16px;
+    font-size: 15px;
+    font-weight: 500;
+    border-radius: 6px;
+  }
+  .btn-add-toggle:hover { background: #1a6fc4; }
+  /* 录入区已展开：按钮变为次要样式（再点一次可收起） */
+  .btn-add-toggle.open {
+    background: #fff;
+    color: #37352f;
+    border: 1px solid #e0e0dc;
+  }
+  .btn-add-toggle.open:hover { background: #f7f7f5; }
+
+  /* ================= 手机端（≤ 700px）专项：筛选行固定一行 + 「添加订单」开关 ================= */
   @media (max-width: 700px) {
-    .filter-row { gap: 6px; padding: 10px; }
-    #filterCustomer { flex: 1 1 100%; max-width: 100%; }
-    #filterStatus { flex: 1 1 46%; max-width: none; }
-    .filter-hint { margin-left: 0; width: 100%; }
+    /* 筛选行**固定在一行**：压缩两个下拉框的宽度（客户名过长时自动裁切），
+       手机端隐藏右侧「显示 X / Y 条」计数，避免把筛选行挤成两行 */
+    .filter-row { flex-wrap: nowrap; gap: 6px; padding: 8px 10px; }
+    .filter-row .filter-title { font-size: 11.5px; letter-spacing: 0; }
+    #filterCustomer { flex: 1 1 auto; min-width: 0; max-width: 42%; }
+    #filterStatus { flex: 0 1 auto; min-width: 0; max-width: 30%; }
+    .filter-select { padding: 6px; overflow: hidden; text-overflow: ellipsis; }
+    .filter-clear { flex: 0 0 auto; padding: 5px 8px; font-size: 12.5px; }
+    .filter-hint { display: none; }
+    /* 「添加订单」开关行：仅有录单权限的用户显示；订单录入区默认隐藏，点按钮才展开 */
+    .add-toggle-row.show { display: flex; margin-bottom: 14px; }
+    .add-toggle-row.show + .add-row:not(.add-open) { display: none; }
   }
 
   /* ================= 团队管理员首页：系统介绍与使用说明（#introArea） ================= */
@@ -2285,6 +2316,12 @@ ${commonStyle}
 ${adBlock}
 
   <div class="container">
+    <!-- 「添加订单」开关行（**仅手机端显示**）：订单录入区在手机上默认隐藏，点该按钮展开 / 收起；
+         桌面端不显示该按钮、录入区照旧常显（桌面端显示不变）；
+         **仅有录单权限的用户**才渲染 .show（无录单权限的用户不显示该行，录入区也不显示）。 -->
+    <div class="add-toggle-row${addRowHidden ? '' : ' show'}" id="addToggleRow">
+      <button class="btn-add-toggle" id="btnAddToggle" type="button" title="展开订单录入区">＋ 添加订单</button>
+    </div>
     <div class="add-row"${addRowHidden ? ' style="display:none"' : ''}>
       <select id="newCustomer" class="customer-select">
         <option value="">选择客户</option>
@@ -2822,6 +2859,8 @@ ${isTeamHome ? teamIntroHtml(teamPlan) : ''}    <div id="listArea"${isTeamHome ?
     // 「添加新订单」录入区（录单权限）：服务端已按权限渲染，这里再按 /api/me 的最新结果同步（兜底）
     const addRowEl = document.querySelector('.add-row');
     if (addRowEl) addRowEl.style.display = currentUser.canPlaceOrder ? '' : 'none';
+    // 手机端「添加订单」开关行：仅有录单权限的用户显示（桌面端该行始终不显示，显示不变）
+    setupAddToggle();
     if (isTeamAdmin) {
       // 「团队设置」（团队名称）对团队账号（含试用）开放
       document.getElementById('btnSettings').style.display = '';
@@ -3009,6 +3048,33 @@ ${isTeamHome ? teamIntroHtml(teamPlan) : ''}    <div id="listArea"${isTeamHome ?
     // 团队管理员不显示订单列表（订单由成员录入与流转）—— 订单筛选行同样隐藏
     if (list) list.style.display = 'none';
     if (filterRow) filterRow.style.display = 'none';
+  }
+
+  // ---------- 「添加订单」开关（**仅手机端**：录入区默认隐藏，点按钮展开 / 收起） ----------
+  //   · 桌面端：该按钮所属的 .add-toggle-row 始终 display:none，录入区照旧常显（显示不变）；
+  //   · 手机端：.add-toggle-row.show 显示按钮，.add-row 默认隐藏，点按钮加上 .add-open 才展开；
+  //   · 仅「有录单权限」的用户显示该行（无权限时服务端已把录入区隐藏，这里也不显示按钮）。
+  function setupAddToggle() {
+    const row = document.getElementById('addToggleRow');
+    const btn = document.getElementById('btnAddToggle');
+    const addRow = document.querySelector('.add-row');
+    if (!row || !btn || !addRow) return;
+    // 录单权限（/api/me 的最新结果）；权限被取消时同步隐藏按钮行
+    if (currentUser && currentUser.canPlaceOrder) row.classList.add('show');
+    else row.classList.remove('show');
+    const syncLabel = function () {
+      const open = addRow.classList.contains('add-open');
+      btn.textContent = open ? '− 收起添加区' : '＋ 添加订单';
+      btn.className = open ? 'btn-add-toggle open' : 'btn-add-toggle';
+      btn.title = open ? '收起订单录入区' : '展开订单录入区';
+    };
+    syncLabel();
+    if (btn.getAttribute('data-bound') === '1') return; // 事件只绑定一次
+    btn.setAttribute('data-bound', '1');
+    btn.addEventListener('click', function () {
+      addRow.classList.toggle('add-open');
+      syncLabel();
+    });
   }
 
   // 客户输入框（仅团队成员录单时需要）：
