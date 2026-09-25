@@ -704,11 +704,12 @@ const INTRO_FLOW = `
           </table>
         </div>
         <ul class="intro-list">
-          <li><b>列表筛选（客户 / 状态）</b>：订单列表上方有一行「<b>筛选</b>」，两项可<b>单选或同时筛选</b> ——
-          「客户」下拉的选项是<b>当前账号授权可以显示的客户</b>（另有「全部客户」）；「状态」下拉为
-          <b>进行中（默认）</b> / 待确认 / 已完成 / 全部状态。<b>默认视图 = 全部客户 + 进行中</b>：
-          要查看其他状态的订单，需在「状态」中筛选后查看；右侧显示「显示 X / Y 条」，
-          点「重置」恢复默认，筛选后无结果时会给出提示。</li>
+          <li><b>列表筛选（客户筛选方式 + 客户 + 状态）</b>：订单列表上方有一行「<b>筛选</b>」，三个下拉可<b>任意组合</b> ——
+          ①「<b>显示 / 不显示</b>」（默认「显示」：只显示所选客户的订单；选「不显示」则<b>排除</b>所选客户的订单）；
+          ②「客户」（选项为<b>当前账号授权可以显示的客户</b>，另有「全部客户」）；
+          ③「状态」（<b>全部状态（默认）</b> / 待确认 / 进行中 / 已完成）。
+          <b>默认视图 = 显示 + 全部客户 + 全部状态</b>（即不筛选，显示全部授权可见订单）；
+          右侧显示「显示 X / Y 条」，点「重置」恢复默认，筛选后无结果时会给出提示。</li>
           <li><b>状态与生产方：普通显示、点击即改</b>：订单行最左侧的「<b>状态</b>」固定显示为彩色徽章
           （待确认 / 进行中 / 已完成），「待确认」阶段的「<b>生产方</b>」也显示为普通文本标签；
           有权限的成员（权限5 = 有 / 总经理 / 部门主管）<b>点击徽章或标签</b>即就地变为下拉选择，
@@ -2093,6 +2094,8 @@ ${commonStyle}
     max-width: 200px;
   }
   .filter-select:focus { border-color: #2383e2; }
+  /* 「显示 / 不显示」（客户筛选方式）：紧挨在「客户」下拉左侧，宽度固定 */
+  #filterCustomerMode { flex: 0 0 auto; width: 88px; }
   #filterCustomer { flex: 0 1 200px; min-width: 0; }
   #filterStatus { flex: 0 0 112px; }
   /* 「重置」：恢复默认筛选（全部客户 + 进行中） */
@@ -2134,14 +2137,15 @@ ${commonStyle}
 
   /* ================= 手机端（≤ 700px）专项：筛选行固定一行 + 「添加订单」开关 ================= */
   @media (max-width: 700px) {
-    /* 筛选行**固定在一行**：压缩两个下拉框的宽度（客户名过长时自动裁切），
-       手机端隐藏右侧「显示 X / Y 条」计数，避免把筛选行挤成两行 */
-    .filter-row { flex-wrap: nowrap; gap: 6px; padding: 8px 10px; }
-    .filter-row .filter-title { font-size: 11.5px; letter-spacing: 0; }
-    #filterCustomer { flex: 1 1 auto; min-width: 0; max-width: 42%; }
+    /* 筛选行**固定在一行**：压缩三个下拉框的宽度（客户名过长时自动裁切），
+       手机端隐藏左侧「筛选」标签与右侧「显示 X / Y 条」计数，避免把筛选行挤成两行 */
+    .filter-row { flex-wrap: nowrap; gap: 5px; padding: 8px 8px; }
+    .filter-row .filter-title { display: none; }
+    #filterCustomerMode { flex: 0 0 auto; width: 76px; max-width: 76px; }
+    #filterCustomer { flex: 1 1 auto; min-width: 0; max-width: 34%; }
     #filterStatus { flex: 0 1 auto; min-width: 0; max-width: 30%; }
-    .filter-select { padding: 6px; overflow: hidden; text-overflow: ellipsis; }
-    .filter-clear { flex: 0 0 auto; padding: 5px 8px; font-size: 12.5px; }
+    .filter-select { padding: 6px 4px; overflow: hidden; text-overflow: ellipsis; }
+    .filter-clear { flex: 0 0 auto; padding: 5px 7px; font-size: 12.5px; }
     .filter-hint { display: none; }
     /* 「添加订单」开关行：仅有录单权限的用户显示；订单录入区默认隐藏，点按钮才展开 */
     .add-toggle-row.show { display: flex; margin-bottom: 14px; }
@@ -2383,26 +2387,32 @@ ${adBlock}
       <button class="btn-add" id="btnAdd">添加</button>
     </div>
 
-    <!-- 订单列表筛选行（客户选择 + 状态选择：可单选或双选）：
-         默认「全部客户 + 进行中」（只显示原授权可见订单中状态为「进行中」的订单）；
-         选择「待确认 / 已完成 / 全部状态」或指定客户后才显示对应订单。
-         「客户选择」的选项由服务端按当前账号授权可显示的客户返回（见 GET /api/filter-customers）。
+    <!-- 订单列表筛选行（客户筛选方式 + 客户选择 + 状态选择；可单选或组合使用）：
+         默认「显示 + 全部客户 + 全部状态」（= 不筛选，显示全部授权可见订单）。
+         · 客户筛选方式：显示（默认，只显示所选客户的订单）/ 不显示（排除所选客户的订单）；
+         · 「客户选择」的选项由服务端按当前账号授权可显示的客户返回（见 GET /api/filter-customers）；
+         · 「状态选择」默认「全部状态」，可按 待确认 / 进行中 / 已完成 筛选。
          团队账号本人已取消订单列表（首页为系统介绍与使用说明）→ 该行隐藏。 -->
     <div class="filter-row" id="filterRow"${isTeamHome ? ' style="display:none"' : ''}>
       <span class="filter-title">筛选</span>
+      <select id="filterCustomerMode" class="filter-select"
+        title="客户筛选方式：显示 = 只显示所选客户的订单（默认）；不显示 = 排除所选客户的订单">
+        <option value="show" selected>显示</option>
+        <option value="hide">不显示</option>
+      </select>
       <select id="filterCustomer" class="filter-select"
         title="按客户筛选：选项为当前账号授权可以显示的客户（默认「全部客户」）">
         <option value="">全部客户</option>
       </select>
       <select id="filterStatus" class="filter-select"
-        title="按订单状态筛选：默认只显示「进行中」；选择「待确认 / 已完成 / 全部状态」可查看其他状态的订单">
-        <option value="doing" selected>进行中</option>
+        title="按订单状态筛选（默认「全部状态」）：可只看 待确认 / 进行中 / 已完成">
+        <option value="" selected>全部状态</option>
+        <option value="doing">进行中</option>
         <option value="pending">待确认</option>
         <option value="done">已完成</option>
-        <option value="">全部状态</option>
       </select>
       <button class="filter-clear" id="btnFilterClear" type="button"
-        title="恢复默认筛选（全部客户 + 进行中）">重置</button>
+        title="恢复默认筛选（显示 + 全部客户 + 全部状态）">重置</button>
       <span class="filter-hint" id="filterHint"></span>
     </div>
 ${isTeamHome ? teamIntroHtml(teamPlan) : ''}    <div id="listArea"${isTeamHome ? ' style="display:none"' : ''}></div>
@@ -2607,6 +2617,36 @@ ${isTeamHome ? teamIntroHtml(teamPlan) : ''}    <div id="listArea"${isTeamHome ?
     </div>
   </div>
 
+  <!-- 编辑生产方弹窗（团队管理员）：一次性修改「用户名 / 生产方性质 / 说明」三个字段 -->
+  <div class="modal-mask" id="producerEditModal">
+    <div class="modal">
+      <h2>编辑生产方</h2>
+      <input type="hidden" id="editProducerId">
+      <div class="field">
+        <label>用户名（同时是该生产方的登录名）</label>
+        <input type="text" id="editProducerName" maxlength="30" autocomplete="off"
+          placeholder="请输入用户名（同时作为登录名）">
+      </div>
+      <div class="field">
+        <label>生产方性质（手动输入：最多 3 个中文字符或 6 个英文字符）</label>
+        <input type="text" class="producer-nature" id="editProducerNature" maxlength="6"
+          autocomplete="off" placeholder="如：自产 / 外购 / OEM">
+      </div>
+      <div class="field">
+        <label>说明</label>
+        <textarea id="editProducerDesc" placeholder="请输入说明（留空即清除）" rows="3" maxlength="200"></textarea>
+      </div>
+      <div class="msg" id="producerEditMsg"></div>
+      <div class="modal-actions">
+        <button class="btn-secondary" data-close="producerEditModal">取消</button>
+        <button class="btn-primary-sm" id="btnSaveProducerEdit">保存</button>
+      </div>
+      <div class="hint" style="text-align:left;margin-top:10px">
+        提示：修改用户名会同时变更该生产方的登录名（密码不变），请通知其使用新用户名登录；已指定该生产方的订单会立即显示新名称。
+      </div>
+    </div>
+  </div>
+
   <!-- 客户管理弹窗（全局客户列表；客户可用该用户名/密码登录，只看本客户的待办） -->
   <div class="modal-mask" id="customersModal">
     <div class="modal">
@@ -2772,12 +2812,16 @@ ${isTeamHome ? teamIntroHtml(teamPlan) : ''}    <div id="listArea"${isTeamHome ?
   const DONE_PAGE_STEP = 20;
   let doneVisible = 5;
 
-  // ---------- 订单列表筛选行（客户 / 状态） ----------
-  // 默认：客户 = 全部客户、状态 = 进行中（**只显示原授权可见订单中状态为「进行中」的订单**）；
-  // 两项可单独筛选，也可同时筛选；选择「待确认 / 已完成 / 全部状态」后才显示其他状态的订单。
-  const FILTER_STATUS_DEFAULT = 'doing';
-  let filterCustomer = '';              // '' = 全部客户
-  let filterStatus = FILTER_STATUS_DEFAULT; // '' = 全部状态
+  // ---------- 订单列表筛选行（客户筛选方式 / 客户 / 状态） ----------
+  // 默认：客户筛选方式 = 「显示」、客户 = 全部客户、状态 = 全部状态（即默认不做任何筛选，
+  //       显示原授权可见的全部订单）；可单选或组合筛选：
+  //       · 「显示」= 只显示所选客户的订单；「不显示」= 排除所选客户的订单；
+  //       · 状态可只看 待确认 / 进行中 / 已完成。
+  const FILTER_STATUS_DEFAULT = '';                 // '' = 全部状态（默认）
+  const FILTER_CUSTOMER_MODE_DEFAULT = 'show';      // 'show' = 显示（默认）；'hide' = 不显示
+  let filterCustomer = '';                          // '' = 全部客户
+  let filterCustomerMode = FILTER_CUSTOMER_MODE_DEFAULT; // 客户筛选方式
+  let filterStatus = FILTER_STATUS_DEFAULT;
   // 「客户选择」下拉的可选项：当前账号**授权可以显示**的客户（服务端 GET /api/filter-customers）
   let filterCustomers = [];
   // 筛选行右侧的临时操作提示（如「新订单已录入」）；切换筛选 / 刷新列表时清除
@@ -3212,6 +3256,8 @@ ${isTeamHome ? teamIntroHtml(teamPlan) : ''}    <div id="listArea"${isTeamHome ?
     sel.title = list.length
       ? '按客户筛选：选项为当前账号授权可以显示的客户（共 ' + list.length + ' 个；默认「全部客户」）'
       : '暂无授权可显示的客户';
+    const mode = document.getElementById('filterCustomerMode');
+    if (mode) mode.value = filterCustomerMode;
     const st = document.getElementById('filterStatus');
     if (st) st.value = filterStatus;
   }
@@ -3220,10 +3266,15 @@ ${isTeamHome ? teamIntroHtml(teamPlan) : ''}    <div id="listArea"${isTeamHome ?
     return t.status || (t.done ? 'done' : 'pending');
   }
 
-  // 按筛选条件过滤订单（客户 / 状态；未选择的项不过滤）—— 仅在「已授权可见」的订单内筛选
+  // 按筛选条件过滤订单（客户筛选方式 / 客户 / 状态；未选择的项不过滤）
+  // —— 只在「已授权可见」的订单内筛选，不改变可见范围
   function filterTodos(list) {
     return list.filter(function (t) {
-      if (filterCustomer && String(t.customer || '').trim() !== filterCustomer) return false;
+      if (filterCustomer) {
+        const hit = String(t.customer || '').trim() === filterCustomer;
+        // 「显示」（默认）：只显示该客户的订单；「不显示」：排除该客户的订单
+        if (filterCustomerMode === 'hide' ? hit : !hit) return false;
+      }
       if (filterStatus && statusOf(t) !== filterStatus) return false;
       return true;
     });
@@ -3235,15 +3286,18 @@ ${isTeamHome ? teamIntroHtml(teamPlan) : ''}    <div id="listArea"${isTeamHome ?
     if (!el) return;
     el.textContent = '显示 ' + shown + ' / ' + total + ' 条' +
       (filterNotice ? ' · ' + filterNotice : '');
-    el.title = '本账号当前授权可查看 ' + total + ' 条订单（默认只显示「进行中」）';
+    el.title = '本账号当前授权可查看 ' + total + ' 条订单（默认「显示 + 全部客户 + 全部状态」）';
   }
 
-  // 恢复默认筛选（全部客户 + 进行中）
+  // 恢复默认筛选（显示 + 全部客户 + 全部状态）
   function resetFilters() {
     filterCustomer = '';
+    filterCustomerMode = FILTER_CUSTOMER_MODE_DEFAULT;
     filterStatus = FILTER_STATUS_DEFAULT;
+    const mode = document.getElementById('filterCustomerMode');
     const cs = document.getElementById('filterCustomer');
     const st = document.getElementById('filterStatus');
+    if (mode) mode.value = filterCustomerMode;
     if (cs) cs.value = '';
     if (st) st.value = filterStatus;
   }
@@ -3271,7 +3325,7 @@ ${isTeamHome ? teamIntroHtml(teamPlan) : ''}    <div id="listArea"${isTeamHome ?
     if (!list.length) {
       // 有订单但被筛选条件过滤掉：给出明确提示（默认只显示「进行中」）
       area.innerHTML = '<div class="empty">没有符合筛选条件的订单（本账号可查看 ' + todos.length +
-        ' 条）<br>可在上方调整「客户 / 状态」筛选，或点「重置」恢复默认（全部客户 + 进行中）</div>';
+        ' 条）<br>可在上方调整「客户 / 状态」筛选，或点「重置」恢复默认（显示 + 全部客户 + 全部状态）</div>';
       return;
     }
     const pending = list.filter(t => statusOf(t) === 'pending');
@@ -3438,15 +3492,15 @@ ${isTeamHome ? teamIntroHtml(teamPlan) : ''}    <div id="listArea"${isTeamHome ?
           ? '点击添加出货日期'
           : '未填写出货日期（需「是否可以添加出货日期」权限）') + '">' +
         '<span class="todo-ship-ph">0000-00-00</span></div>';
-    // 生产方标签（只显示简称）：历史数据可能只有 producerId，用生产方列表兜底
-    const producerShort = t.producerName ||
-      (t.producerId ? ((producersCache.find(p => p.id === t.producerId) || {}).username || '') : '');
-    // 订单行标签文字 = **生产方用户名 + 生产方性质**（如「张三·自产」/「李四·外购」）：
-    // 性质由团队管理员在「生产方管理」中手动填写（最多 3 个中文或 6 个英文）；
-    // 历史数据（self / purchased）在服务端已归一化为「自产 / 外购」；生产方被删除时只显示用户名。
+    // 生产方信息：优先取「生产方管理」里的最新数据（改名 / 改性质后立即生效），
+    // 取不到（生产方已被删除）时回退订单里保存的名称快照
     const producerInfo = t.producerId
       ? (producersCache.find(p => p.id === t.producerId) || null)
       : null;
+    const producerShort = (producerInfo && producerInfo.username) || t.producerName || '';
+    // 订单行标签文字 = **生产方用户名 + 生产方性质**（如「张三·自产」/「李四·外购」）：
+    // 性质由团队管理员在「生产方管理」中手动填写（最多 3 个中文或 6 个英文）；
+    // 历史数据（self / purchased）在服务端已归一化为「自产 / 外购」；生产方被删除时只显示用户名。
     const producerNatureText = producerInfo ? (producerInfo.nature || '') : '';
     const producerLabel = producerShort
       ? (producerNatureText && producerNatureText !== producerShort
@@ -3874,9 +3928,10 @@ ${isTeamHome ? teamIntroHtml(teamPlan) : ''}    <div id="listArea"${isTeamHome ?
           item.classList.add('open');
           item.scrollIntoView({ block: 'center', behavior: 'smooth' });
         } else if (todos.some(function (t) { return t.id === m.todoId; })) {
-          // 该订单被「筛选行」条件隐藏（如默认只看「进行中」，而它是待确认 / 已完成）：
-          // 自动切到「全部客户 + 全部状态」后展开，避免误以为订单不存在
+          // 该订单被「筛选行」条件隐藏（如客户筛选方式 / 指定客户 / 指定状态把它排除了）：
+          // 自动切到默认筛选（显示 + 全部客户 + 全部状态）后展开，避免误以为订单不存在
           filterCustomer = '';
+          filterCustomerMode = FILTER_CUSTOMER_MODE_DEFAULT;
           filterStatus = '';
           filterNotice = '';
           buildFilterOptions();
@@ -4181,10 +4236,16 @@ ${isTeamHome ? teamIntroHtml(teamPlan) : ''}    <div id="listArea"${isTeamHome ?
       if (currencyEl) currencyEl.value = 'USD';
       // 生产方选择恢复为「不指定生产方」（下次录单默认不指定）
       if (producerEl) producerEl.value = '';
-      // 新订单为「待确认」：若当前筛选条件会把它隐藏，自动切换筛选，避免「刚录入却看不到」
+      // 新订单为「待确认」：若当前筛选条件会把它隐藏，自动调整筛选，避免「刚录入却看不到」
       if (filterStatus && filterStatus !== 'pending') filterStatus = 'pending';
-      if (filterCustomer && filterCustomer !== String(data.todo.customer || '').trim()) {
-        filterCustomer = '';
+      const newCustomer = String(data.todo.customer || '').trim();
+      if (filterCustomer) {
+        const sameCustomer = filterCustomer === newCustomer;
+        const hidden = filterCustomerMode === 'hide' ? sameCustomer : !sameCustomer;
+        if (hidden) {
+          filterCustomer = '';
+          filterCustomerMode = FILTER_CUSTOMER_MODE_DEFAULT;
+        }
       }
       filterNotice = '新订单已录入（状态：待确认）';
       buildFilterOptions();
@@ -4197,14 +4258,18 @@ ${isTeamHome ? teamIntroHtml(teamPlan) : ''}    <div id="listArea"${isTeamHome ?
     if (e.key === 'Enter') addTodo();
   });
 
-  // ---------- 订单列表筛选行（客户选择 + 状态选择） ----------
-  //   两项可单选或双选；默认「全部客户 + 进行中」—— 只显示原授权可见订单中状态为「进行中」的订单，
-  //   需要查看其他状态时通过「状态」筛选（待确认 / 已完成 / 全部状态）。
+  // ---------- 订单列表筛选行（客户筛选方式 + 客户选择 + 状态选择） ----------
+  //   默认「显示 + 全部客户 + 全部状态」= 不筛选（显示全部授权可见订单）；
+  //   可任意组合：「显示 / 不显示」+ 指定客户 + 指定状态。
   function onFilterChanged() {
     filterNotice = '';
     doneVisible = 5;   // 筛选条件变化后「已完成」的折叠计数重置
     render();
   }
+  document.getElementById('filterCustomerMode').addEventListener('change', function () {
+    filterCustomerMode = this.value === 'hide' ? 'hide' : 'show';
+    onFilterChanged();
+  });
   document.getElementById('filterCustomer').addEventListener('change', function () {
     filterCustomer = this.value;
     onFilterChanged();
@@ -4331,8 +4396,9 @@ ${isTeamHome ? teamIntroHtml(teamPlan) : ''}    <div id="listArea"${isTeamHome ?
 
   // 「生产方」普通显示标签的 HTML（renderItem 与 exitProducerEdit 共用）
   function producerPickHtml(t) {
-    const short = t.producerName ||
-      (t.producerId ? ((producersCache.find(p => p.id === t.producerId) || {}).username || '') : '');
+    // 生产方名称：优先取「生产方管理」的最新名称（改名后立即生效），取不到再回退订单里的名称快照
+    const info = t.producerId ? (producersCache.find(p => p.id === t.producerId) || null) : null;
+    const short = (info && info.username) || t.producerName || '';
     const text = t.producerId
       ? (short || '已指定')
       : (producersCache.length ? '选择生产方' : '请先添加生产方');
@@ -5324,6 +5390,8 @@ ${isTeamHome ? teamIntroHtml(teamPlan) : ''}    <div id="listArea"${isTeamHome ?
             editTextHtml('producer', p.id, p.username, p.description, '未填写说明', 'producer-desc') +
           '</div>' +
           '<div class="producer-row-actions">' +
+            '<button class="btn-secondary-sm" data-editproducerinfo="' + esc(p.id) + '"' +
+              ' title="编辑该生产方：用户名 / 生产方性质 / 说明">编辑</button>' +
             '<button class="btn-secondary-sm" data-resetpwdproducer="' + esc(p.username) + '">重置密码</button>' +
             '<button class="btn-danger" data-delproducer="' + esc(p.id) + '">删除</button>' +
           '</div>' +
@@ -5361,6 +5429,14 @@ ${isTeamHome ? teamIntroHtml(teamPlan) : ''}    <div id="listArea"${isTeamHome ?
             el.value = original;
             el.disabled = false;
           }
+        });
+      });
+      // 「编辑」：打开编辑弹窗（用户名 / 生产方性质 / 说明 三个字段）
+      list.querySelectorAll('[data-editproducerinfo]').forEach(el => {
+        el.addEventListener('click', function () {
+          const id = el.getAttribute('data-editproducerinfo');
+          const target = producers.find(x => x.id === id);
+          if (target) openProducerEdit(target);
         });
       });
       // 重置生产方登录密码（复用「重置密码」弹窗）
@@ -5414,6 +5490,57 @@ ${isTeamHome ? teamIntroHtml(teamPlan) : ''}    <div id="listArea"${isTeamHome ?
       clampNatureInput(newProducerNatureEl);
     });
   }
+  const editProducerNatureEl = document.getElementById('editProducerNature');
+  if (editProducerNatureEl) {
+    editProducerNatureEl.addEventListener('input', function () {
+      clampNatureInput(editProducerNatureEl);
+    });
+  }
+
+  // ---------- 编辑生产方（用户名 / 生产方性质 / 说明；团队管理员） ----------
+  function openProducerEdit(p) {
+    const msg = document.getElementById('producerEditMsg');
+    msg.className = 'msg';
+    msg.textContent = '';
+    document.getElementById('editProducerId').value = p.id;
+    document.getElementById('editProducerName').value = p.username || '';
+    document.getElementById('editProducerNature').value = p.nature || '';
+    document.getElementById('editProducerDesc').value = p.description || '';
+    document.getElementById('producerEditModal').classList.add('show');
+  }
+
+  document.getElementById('btnSaveProducerEdit').addEventListener('click', async function () {
+    const msg = document.getElementById('producerEditMsg');
+    msg.className = 'msg';
+    const id = document.getElementById('editProducerId').value;
+    const username = document.getElementById('editProducerName').value.trim();
+    const nature = document.getElementById('editProducerNature').value.trim();
+    const description = document.getElementById('editProducerDesc').value.trim();
+    if (!username) {
+      msg.className = 'msg err';
+      msg.textContent = '请输入用户名（同时作为登录名）';
+      return;
+    }
+    if (!nature) {
+      msg.className = 'msg err';
+      msg.textContent = '请输入生产方性质（如：自产 / 外购）';
+      return;
+    }
+    try {
+      await api('/api/producers/' + encodeURIComponent(id), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, nature, description }),
+      });
+      document.getElementById('producerEditModal').classList.remove('show');
+      producersCache = [];
+      await loadProducers();
+      render();
+    } catch (err) {
+      msg.className = 'msg err';
+      msg.textContent = err.message;
+    }
+  });
 
   document.getElementById('btnAddProducer').addEventListener('click', async () => {
     const msg = document.getElementById('producerMsg');

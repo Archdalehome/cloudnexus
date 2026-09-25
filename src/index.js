@@ -1305,6 +1305,31 @@ function producerNatureError(raw) {
   return "";
 }
 
+// 生产方改名后：同步本团队所有订单里的「生产方名称」快照（订单行标签 / 悬浮提示显示用）
+// 说明：订单会保存 producerName 快照（避免生产方被删除后名字丢失）；改名后必须一起更新，
+//       否则已存在的订单仍会显示旧名称。
+async function syncProducerNameInTodos(env, teamId, producerId, newName) {
+  const list = await env.TODO_KV.list({ prefix: "todos:" });
+  for (const key of list.keys) {
+    const owner = key.name.replace("todos:", "");
+    const ownerRaw = await env.TODO_KV.get(`user:${owner}`);
+    if (!ownerRaw) continue; // 账号已删除 → 不可见
+    const ownerUser = JSON.parse(ownerRaw);
+    if (teamIdOf(ownerUser) !== teamId) continue;
+    const raw = await env.TODO_KV.get(key.name);
+    if (!raw) continue;
+    const todos = JSON.parse(raw);
+    let changed = false;
+    for (const t of todos) {
+      if (t.producerId === producerId && t.producerName !== newName) {
+        t.producerName = newName;
+        changed = true;
+      }
+    }
+    if (changed) await env.TODO_KV.put(key.name, JSON.stringify(todos));
+  }
+}
+
 // 获取本团队生产方列表（团队内共享，团队所有成员可见）
 // 兼容历史数据：早期字段名为 shortName，现统一为 username（同时作为生产方登录账号）
 async function getProducers(env, teamId) {
@@ -3377,6 +3402,71 @@ async function handleApi(request, env, pathname) {
     return json({ ok: true });
   }
 
+
+  // 编辑生产方（**用户名 / 生产方性质 / 说明** 三个字段；专业版功能）：
+  //   · 用户名同时是该生产方的登录账号 → 改名时同步迁移登录账号（user:<旧> → user:<新>，密码不变）；
+  //   · 改名后同步本团队所有订单里的「生产方名称」快照（订单行标签 / 悬浮提示显示用）；
+  //   · 性质为手动输入文字（最多 3 个中文字符或 6 个英文字符）；说明留空即清除。
+  if (pathname.startsWith("/api/producers/") && method === "PUT") {
+    const user = await getCurrentUser(request, env);
+    if (!user) return json({ error: "未登录" }, 401);
+    if (!isTeamAdmin(user.role)) return json({ error: "无权限" }, 403);
+    const teamId = teamIdOf(user);
+    const id = decodeURIComponent(pathname.replace("/api/producers/", ""));
+    const { username, nature, description } = await readBody(request);
+    const producers = await getProducers(env, teamId);
+    const prod = producers.find((p) => p.id === id);
+    if (!prod) return json({ error: "生产方不存在" }, 404);
+    const oldName = prod.username || "";
+    const uname = String(
+      username === undefined || username === null ? oldName : username
+    ).trim();
+    if (!uname) return json({ error: "请输入用户名" }, 400);
+    // 性质：手动输入（最多 3 个中文或 6 个英文）；未传时保持原值
+    const natureText = String(
+      nature === undefined || nature === null ? prod.nature : nature
+    ).trim();
+    const natErr = producerNatureError(natureText);
+    if (natErr) return json({ error: natErr }, 400);
+    const desc = String(
+      description === undefined || description === null ? prod.description : description
+    ).trim();
+    // 用户名唯一性校验（其他生产方用户名 / 成员账号不能重名）
+    const renamed = uname !== oldName;
+    if (renamed) {
+      if (producers.some((p) => p.id !== id && p.username === uname)) {
+        return json({ error: "该用户名已被其他生产方占用" }, 400);
+      }
+      if (await env.TODO_KV.get(`user:${uname}`)) {
+        return json({ error: "该用户名已被成员占用" }, 400);
+      }
+    }
+    prod.username = uname;
+    prod.nature = natureText;
+    prod.description = desc;
+    await saveProducers(env, teamId, producers);
+    if (renamed) {
+      // 迁移该生产方的登录账号（保留原密码，登录用户名随新用户名）
+      const raw = await env.TODO_KV.get(`user:${oldName}`);
+      if (raw) {
+        const account = JSON.parse(raw);
+        account.username = uname;
+        await env.TODO_KV.put(`user:${uname}`, JSON.stringify(account));
+        await env.TODO_KV.delete(`user:${oldName}`);
+      }
+      // 同步订单里的生产方名称快照
+      await syncProducerNameInTodos(env, teamId, id, uname);
+    }
+    return json({
+      ok: true,
+      producer: {
+        id,
+        username: prod.username,
+        nature: prod.nature,
+        description: prod.description,
+      },
+    });
+  }
 
   // 修改生产方「说明」（专业版功能；留空即清除说明）
   if (
