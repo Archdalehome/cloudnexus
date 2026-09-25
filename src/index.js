@@ -1621,6 +1621,62 @@ async function viewCustomerNamesOf(env, user) {
   return out;
 }
 
+// ============ 订单列表「筛选行」的客户选项 ============
+// 订单列表顶部的筛选行（客户选择 + 状态选择）中，「客户选择」下拉只列出**当前账号授权可以显示**的客户：
+//   · 团队管理员本人：**已取消订单列表**（首页为「系统介绍与使用说明」）→ 不提供该接口（403）；
+//   · 总经理 / 部门主管（历史账号）：本团队「客户管理」里的全部客户 + 本团队订单中出现过的客户；
+//   · 普通成员：「可查看客户列表」为空（= 可查看全部订单）时同「总经理」；否则为「可查看客户列表」中的客户
+//     + 自己录入的订单中出现过的客户（这些正是其清单里能看到的订单所涉及的客户）；
+//   · 业务主管：本团队（非待确认）订单中出现过的客户；
+//   · 生产部：被授权生产方名下（非待确认）订单中出现过的客户；
+//   · 生产方：指定给自己（非待确认）订单中出现过的客户；
+//   · 客户：仅本客户名称。
+// 返回客户名数组（去空、去重，保持「客户管理顺序 → 订单出现顺序」）。只作为筛选下拉的选项，
+// **不改变订单可见范围**（可见范围仍由 GET /api/todos 决定）。
+async function filterCustomerNamesOf(env, user) {
+  const out = [];
+  const push = (v) => {
+    const name = String(v === undefined || v === null ? "" : v).trim();
+    if (name && out.indexOf(name) === -1) out.push(name);
+  };
+  if (!user) return out;
+  const teamId = teamIdOf(user);
+  if (canManageTodos(user.role)) {
+    // 总经理 / 部门主管（历史账号）：本团队全部客户 + 本团队订单中出现过的客户
+    (await getCustomerList(env, teamId)).forEach((c) => push(c && c.name));
+    (await getAllTodos(env, teamId, false)).forEach((t) => push(t.customer));
+  } else if (isMemberRole(user.role)) {
+    // 普通成员：先按「可查看客户列表」自动对齐「是否可查看全部订单」，再按其可见范围列出客户
+    await syncMemberOrderScope(env, user);
+    if (canViewAllTeamOrders(user)) {
+      (await getCustomerList(env, teamId)).forEach((c) => push(c && c.name));
+      (await getAllTodos(env, teamId, false)).forEach((t) => push(t.customer));
+    } else {
+      // 只能查看 ①自己录入的订单 ②「可查看客户列表」中客户的订单 —— 客户选项与之一一对应
+      (await viewCustomerNamesOf(env, user)).forEach(push);
+      (await getTodos(env, user.username)).forEach((t) => push(t.customer));
+    }
+  } else if (user.role === "viewer") {
+    // 业务主管：本团队「进行中 / 已完成」的订单
+    (await getAllTodos(env, teamId, true)).forEach((t) => push(t.customer));
+  } else if (user.role === "restricted") {
+    // 生产部：被授权生产方名下的「进行中 / 已完成」订单
+    const ids = await getWatchProducers(env, user.username);
+    (await getAllTodos(env, teamId, true, ids)).forEach((t) => push(t.customer));
+  } else if (user.role === "producer") {
+    // 生产方：指定给自己的「进行中 / 已完成」订单
+    const producers = await getProducers(env, teamId);
+    const me = producers.find((p) => p.id === user.producerId);
+    (await getAllTodos(env, teamId, true, me ? [me.id] : [])).forEach((t) =>
+      push(t.customer)
+    );
+  } else if (user.role === "customer") {
+    // 客户：只有本客户
+    push(user.customerName || "");
+  }
+  return out;
+}
+
 // 该成员能否为「某位成员的某条订单」追加备注：
 //   仅当这条订单的客户在其「可查看客户列表」中（即该订单在其清单里可见）时才允许。
 async function canNoteVisibleOrderForMember(env, user, targetOwner, todoId) {
@@ -3537,6 +3593,24 @@ async function handleApi(request, env, pathname) {
 
 
   // ---- 待办列表 ----
+  // 订单列表「筛选行」的「客户选择」下拉选项：当前账号**授权可以显示**的客户
+  //（只提供下拉选项，不改变订单可见范围；团队管理员已取消订单列表 → 403）
+  if (pathname === "/api/filter-customers" && method === "GET") {
+    const user = await getCurrentUser(request, env);
+    if (!user) return json({ error: "未登录" }, 401);
+    if (isTeamAdmin(user.role)) {
+      return json(
+        {
+          error:
+            "团队账号不提供订单列表：首页为「系统介绍与使用说明」，订单由团队成员录入与流转" +
+            "（团队管理员负责团队设置 / 成员管理 / 生产方管理 / 客户管理 / 订阅）",
+        },
+        403
+      );
+    }
+    return json({ customers: await filterCustomerNamesOf(env, user) });
+  }
+
   if (pathname === "/api/todos" && method === "GET") {
     const user = await getCurrentUser(request, env);
     if (!user) return json({ error: "未登录" }, 401);

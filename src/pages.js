@@ -704,6 +704,11 @@ const INTRO_FLOW = `
           </table>
         </div>
         <ul class="intro-list">
+          <li><b>列表筛选（客户 / 状态）</b>：订单列表上方有一行「<b>筛选</b>」，两项可<b>单选或同时筛选</b> ——
+          「客户」下拉的选项是<b>当前账号授权可以显示的客户</b>（另有「全部客户」）；「状态」下拉为
+          <b>进行中（默认）</b> / 待确认 / 已完成 / 全部状态。<b>默认视图 = 全部客户 + 进行中</b>：
+          要查看其他状态的订单，需在「状态」中筛选后查看；右侧显示「显示 X / Y 条」，
+          点「重置」恢复默认，筛选后无结果时会给出提示。</li>
           <li><b>交期配色</b>：当前日期已过交期显示<b>红色</b>、剩余 1~14 天显示<b>黄色</b>、剩余 14 天以上显示<b>绿色</b>，一眼看出紧急程度。</li>
           <li><b>订单文件链接（客户订单）</b>：录入订单时填写（须以 http:// 或 https:// 开头，可留空）；有权限的成员点击 PO# 即可打开。</li>
           <li><b>采购文件链接（生产订单）</b>：订单行上黄色的「自产单 / 外购单」标签表示<b>尚未填写采购文件</b>，
@@ -819,7 +824,8 @@ ${INTRO_ABOUT}${INTRO_ROLES}${INTRO_FLOW}${INTRO_PERMS}
           <li><b>让成员登录录入订单</b>：团队管理员本人不录入订单 —— 把登录网址与成员账号发给对应同事，
           由成员登录后在「添加新订单」录入区填写客户 / 订单号 / 交期 / 币种 / 金额 / 订单文件链接并添加（新订单为「待确认」）。</li>
           <li><b>订单流转</b>：由有权限的成员（权限5「是否可以更新订单状态」= 有）在订单行上把状态从「待确认」改为「进行中」
-          （试用团队没有生产方时可直接改；已添加生产方后需先指定生产方），交付完成后改为「已完成」。</li>
+          （试用团队没有生产方时可直接改；已添加生产方后需先指定生产方），交付完成后改为「已完成」。
+          列表上方的「<b>筛选</b>」行可按<b>客户 / 状态</b>筛选（<b>默认只显示「进行中」</b>，要查看「待确认 / 已完成 / 全部状态」需在「状态」下拉中选择）。</li>
           <li><b>补填与跟踪</b>：采购文件链接（黄色「自产单 / 外购单」标签）、脱敏订单文件链接（订单号右侧「回形针」）、
           出货日期（「交期」右侧灰色区块）由有权限的成员直接在订单行上补填；备注里 @ 同事会触发站内消息提醒。</li>
           <li><b>需要更多成员 / 生产方 / 客户，或想移除广告位</b>：点顶栏「订阅」→ 选择套餐 → 提交订阅申请，
@@ -876,7 +882,8 @@ ${INTRO_ABOUT}${INTRO_ROLES}${INTRO_FLOW}${INTRO_PERMS}
           <li><b>让成员登录录入订单</b>：团队管理员本人不录入订单 —— 把登录网址与成员账号发给对应同事，
           由成员登录后在「添加新订单」录入区填写客户 / 订单号 / 交期 / 币种 / 金额 / 订单文件链接并添加（新订单为「待确认」）。</li>
           <li><b>订单流转</b>：由有权限的成员（权限5「是否可以更新订单状态」= 有）在订单行上把状态从「待确认」改为「进行中」
-          —— 此时<b>必须先指定生产方</b>（下拉或弹窗选择），交付完成后改为「已完成」。</li>
+          —— 此时<b>必须先指定生产方</b>（下拉或弹窗选择），交付完成后改为「已完成」。
+          列表上方的「<b>筛选</b>」行可按<b>客户 / 状态</b>筛选（<b>默认只显示「进行中」</b>，要查看「待确认 / 已完成 / 全部状态」需在「状态」下拉中选择）。</li>
           <li><b>补填与跟踪</b>：采购文件链接（黄色「自产单 / 外购单」标签）、脱敏订单文件链接（订单号右侧「回形针」）、
           出货日期（「交期」右侧灰色区块）由有权限的成员直接在订单行上补填；备注里 @ 同事会触发站内消息提醒。</li>
           <li><b>到期前续费</b>：关注顶栏徽章剩余天数，剩余不足 30 天时点「续费」→ 选择套餐 → 提交续费申请，
@@ -2022,6 +2029,61 @@ ${commonStyle}
     .todo-title { min-width: 4.5em; }
   }
 
+  /* ================= 订单列表筛选行（客户选择 + 状态选择） ================= */
+  /* 位于订单列表上方：默认「全部客户 + 进行中」，两项可单选或同时筛选；仅影响显示，不改变可见范围 */
+  .filter-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    padding: 10px 12px;
+    background: #fff;
+    border: 1px solid #ebebe8;
+    border-radius: 8px;
+  }
+  .filter-row .filter-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: #9b9a97;
+    letter-spacing: 0.5px;
+  }
+  .filter-select {
+    padding: 7px 10px;
+    font-size: 13.5px;
+    border: 1px solid #e0e0dc;
+    border-radius: 6px;
+    background: #fff;
+    color: #37352f;
+    outline: none;
+    cursor: pointer;
+    max-width: 200px;
+  }
+  .filter-select:focus { border-color: #2383e2; }
+  #filterCustomer { flex: 0 1 200px; min-width: 0; }
+  #filterStatus { flex: 0 0 112px; }
+  /* 「重置」：恢复默认筛选（全部客户 + 进行中） */
+  .filter-clear {
+    background: transparent;
+    color: #6b6b68;
+    padding: 6px 10px;
+    font-size: 13px;
+    border-radius: 6px;
+  }
+  .filter-clear:hover { background: #f1f1ef; }
+  /* 右侧统计：当前显示条数 / 本账号可查看条数 */
+  .filter-hint {
+    margin-left: auto;
+    font-size: 12.5px;
+    color: #9b9a97;
+  }
+  @media (max-width: 700px) {
+    .filter-row { gap: 6px; padding: 10px; }
+    #filterCustomer { flex: 1 1 100%; max-width: 100%; }
+    #filterStatus { flex: 1 1 46%; max-width: none; }
+    .filter-hint { margin-left: 0; width: 100%; }
+  }
+
   /* ================= 团队管理员首页：系统介绍与使用说明（#introArea） ================= */
   /* 两套版本内容（试用版 / 订阅版）默认都隐藏：脚本按当前账号版本给 #introArea 设置
      data-plan（trial / pro），只显示与 data-ver 匹配的那一套（订阅后自动切换） */
@@ -2185,7 +2247,8 @@ ${commonStyle}
     /* 表单控件字号 16px：iOS 聚焦时不会自动放大页面 */
     input, textarea, select,
     .add-row input, .add-row select, .note-input,
-    .customer-select, .customer-input, .status-select, .producer-select { font-size: 16px; }
+    .customer-select, .customer-input, .status-select, .producer-select,
+    .filter-select { font-size: 16px; }
   }
 
   /* 小屏手机（≤ 420px）：进一步压缩留白，按钮整行更好点按 */
@@ -2241,6 +2304,29 @@ ${adBlock}
       <select id="newProducer" class="producer-select-new" style="display:none"
         title="给本订单指定生产方（由团队管理员在「成员管理」的「可选生产方列表」中授权，默认「无」）"></select>
       <button class="btn-add" id="btnAdd">添加</button>
+    </div>
+
+    <!-- 订单列表筛选行（客户选择 + 状态选择：可单选或双选）：
+         默认「全部客户 + 进行中」（只显示原授权可见订单中状态为「进行中」的订单）；
+         选择「待确认 / 已完成 / 全部状态」或指定客户后才显示对应订单。
+         「客户选择」的选项由服务端按当前账号授权可显示的客户返回（见 GET /api/filter-customers）。
+         团队账号本人已取消订单列表（首页为系统介绍与使用说明）→ 该行隐藏。 -->
+    <div class="filter-row" id="filterRow"${isTeamHome ? ' style="display:none"' : ''}>
+      <span class="filter-title">筛选</span>
+      <select id="filterCustomer" class="filter-select"
+        title="按客户筛选：选项为当前账号授权可以显示的客户（默认「全部客户」）">
+        <option value="">全部客户</option>
+      </select>
+      <select id="filterStatus" class="filter-select"
+        title="按订单状态筛选：默认只显示「进行中」；选择「待确认 / 已完成 / 全部状态」可查看其他状态的订单">
+        <option value="doing" selected>进行中</option>
+        <option value="pending">待确认</option>
+        <option value="done">已完成</option>
+        <option value="">全部状态</option>
+      </select>
+      <button class="filter-clear" id="btnFilterClear" type="button"
+        title="恢复默认筛选（全部客户 + 进行中）">重置</button>
+      <span class="filter-hint" id="filterHint"></span>
     </div>
 ${isTeamHome ? teamIntroHtml(teamPlan) : ''}    <div id="listArea"${isTeamHome ? ' style="display:none"' : ''}></div>
   </div>
@@ -2610,6 +2696,17 @@ ${isTeamHome ? teamIntroHtml(teamPlan) : ''}    <div id="listArea"${isTeamHome ?
   const DONE_PAGE_STEP = 20;
   let doneVisible = 5;
 
+  // ---------- 订单列表筛选行（客户 / 状态） ----------
+  // 默认：客户 = 全部客户、状态 = 进行中（**只显示原授权可见订单中状态为「进行中」的订单**）；
+  // 两项可单独筛选，也可同时筛选；选择「待确认 / 已完成 / 全部状态」后才显示其他状态的订单。
+  const FILTER_STATUS_DEFAULT = 'doing';
+  let filterCustomer = '';              // '' = 全部客户
+  let filterStatus = FILTER_STATUS_DEFAULT; // '' = 全部状态
+  // 「客户选择」下拉的可选项：当前账号**授权可以显示**的客户（服务端 GET /api/filter-customers）
+  let filterCustomers = [];
+  // 筛选行右侧的临时操作提示（如「新订单已录入」）；切换筛选 / 刷新列表时清除
+  let filterNotice = '';
+
   // ---------- 工具 ----------
   function fmtDate(iso) {
     const d = new Date(iso);
@@ -2881,10 +2978,12 @@ ${isTeamHome ? teamIntroHtml(teamPlan) : ''}    <div id="listArea"${isTeamHome ?
     const area = document.getElementById('introArea');
     if (!area) return;
     const list = document.getElementById('listArea');
+    const filterRow = document.getElementById('filterRow');
     if (!isTeamAdmin) {
-      // 其他角色（成员 / 生产方 / 客户 / 历史账号等）：首页仍是订单列表
+      // 其他角色（成员 / 生产方 / 客户 / 历史账号等）：首页仍是订单列表（含筛选行）
       area.style.display = 'none';
       if (list) list.style.display = '';
+      if (filterRow) filterRow.style.display = '';
       return;
     }
     // 版本：专业版有效期内 = pro（订阅版）；未订阅 / 订阅已到期 = trial（试用版）
@@ -2907,8 +3006,9 @@ ${isTeamHome ? teamIntroHtml(teamPlan) : ''}    <div id="listArea"${isTeamHome ?
       setIntroText('introTrialCustomers', used('customers', 1));
     }
     area.style.display = '';
-    // 团队管理员不显示订单列表（订单由成员录入与流转）
+    // 团队管理员不显示订单列表（订单由成员录入与流转）—— 订单筛选行同样隐藏
     if (list) list.style.display = 'none';
+    if (filterRow) filterRow.style.display = 'none';
   }
 
   // 客户输入框（仅团队成员录单时需要）：
@@ -2962,13 +3062,85 @@ ${isTeamHome ? teamIntroHtml(teamPlan) : ''}    <div id="listArea"${isTeamHome ?
 
   // ---------- 加载待办 ----------
   async function loadTodos() {
-    const data = await api('/api/todos');
+    // 同时刷新「筛选行」的客户选项（授权可见客户）：权限 / 客户分配变化后无需重新登录即可生效
+    const [data] = await Promise.all([
+      api('/api/todos'),
+      loadFilterCustomers(),
+    ]);
     todos = data.todos || [];
+    filterNotice = '';       // 刷新列表后清除上一次操作的临时提示
+    buildFilterOptions();
     render();
+  }
+
+  // 拉取「客户选择」下拉的可选项（当前账号授权可以显示的客户）
+  async function loadFilterCustomers() {
+    try {
+      const data = await api('/api/filter-customers');
+      filterCustomers = data.customers || [];
+    } catch (e) {
+      filterCustomers = [];
+    }
+  }
+
+  // 构建筛选行下拉：
+  //   · 客户：服务端返回的「授权可见客户」+ 当前清单里出现过的客户（兜底，保证每条可见订单都能被筛到）；
+  //     构建后尽量保留用户当前的选择（仍存在时），否则回退为「全部客户」。
+  function buildFilterOptions() {
+    const sel = document.getElementById('filterCustomer');
+    if (!sel) return;
+    const list = [];
+    filterCustomers.forEach(function (n) {
+      const v = String(n || '').trim();
+      if (v && list.indexOf(v) === -1) list.push(v);
+    });
+    todos.forEach(function (t) {
+      const v = String(t.customer || '').trim();
+      if (v && list.indexOf(v) === -1) list.push(v);
+    });
+    sel.innerHTML = '<option value="">全部客户</option>' +
+      list.map(function (n) {
+        return '<option value="' + esc(n) + '">' + esc(n) + '</option>';
+      }).join('');
+    if (filterCustomer && list.indexOf(filterCustomer) === -1) filterCustomer = '';
+    sel.value = filterCustomer;
+    sel.title = list.length
+      ? '按客户筛选：选项为当前账号授权可以显示的客户（共 ' + list.length + ' 个；默认「全部客户」）'
+      : '暂无授权可显示的客户';
+    const st = document.getElementById('filterStatus');
+    if (st) st.value = filterStatus;
   }
 
   function statusOf(t) {
     return t.status || (t.done ? 'done' : 'pending');
+  }
+
+  // 按筛选条件过滤订单（客户 / 状态；未选择的项不过滤）—— 仅在「已授权可见」的订单内筛选
+  function filterTodos(list) {
+    return list.filter(function (t) {
+      if (filterCustomer && String(t.customer || '').trim() !== filterCustomer) return false;
+      if (filterStatus && statusOf(t) !== filterStatus) return false;
+      return true;
+    });
+  }
+
+  // 筛选行右侧统计（显示条数 / 本账号可查看条数）+ 临时操作提示
+  function updateFilterHint(shown, total) {
+    const el = document.getElementById('filterHint');
+    if (!el) return;
+    el.textContent = '显示 ' + shown + ' / ' + total + ' 条' +
+      (filterNotice ? ' · ' + filterNotice : '');
+    el.title = '本账号当前授权可查看 ' + total + ' 条订单（默认只显示「进行中」）';
+  }
+
+  // 恢复默认筛选（全部客户 + 进行中）
+  function resetFilters() {
+    filterCustomer = '';
+    filterStatus = FILTER_STATUS_DEFAULT;
+    const cs = document.getElementById('filterCustomer');
+    const st = document.getElementById('filterStatus');
+    if (cs) cs.value = '';
+    if (st) st.value = filterStatus;
   }
 
   // ---------- 日期框（自绘 yyyy/mm/dd 提示，取代浏览器原生的 yyyy/mm/日） ----------
@@ -2984,13 +3156,22 @@ ${isTeamHome ? teamIntroHtml(teamPlan) : ''}    <div id="listArea"${isTeamHome ?
 
   function render() {
     const area = document.getElementById('listArea');
+    // 按筛选行（客户 / 状态）过滤 —— 只在**已授权可见**的订单内筛选
+    const list = filterTodos(todos);
+    updateFilterHint(list.length, todos.length);
     if (!todos.length) {
       area.innerHTML = '<div class="empty">目前尚未录入订单！</div>';
       return;
     }
-    const pending = todos.filter(t => statusOf(t) === 'pending');
-    const doing = todos.filter(t => statusOf(t) === 'doing');
-    const done = todos.filter(t => statusOf(t) === 'done');
+    if (!list.length) {
+      // 有订单但被筛选条件过滤掉：给出明确提示（默认只显示「进行中」）
+      area.innerHTML = '<div class="empty">没有符合筛选条件的订单（本账号可查看 ' + todos.length +
+        ' 条）<br>可在上方调整「客户 / 状态」筛选，或点「重置」恢复默认（全部客户 + 进行中）</div>';
+      return;
+    }
+    const pending = list.filter(t => statusOf(t) === 'pending');
+    const doing = list.filter(t => statusOf(t) === 'doing');
+    const done = list.filter(t => statusOf(t) === 'done');
     let html = '';
     if (pending.length) {
       html += '<div class="section-title">待确认 (' + pending.length + ')</div>';
@@ -3639,6 +3820,19 @@ ${isTeamHome ? teamIntroHtml(teamPlan) : ''}    <div id="listArea"${isTeamHome ?
           document.querySelectorAll('.todo-item.open').forEach(function (x) { x.classList.remove('open'); });
           item.classList.add('open');
           item.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        } else if (todos.some(function (t) { return t.id === m.todoId; })) {
+          // 该订单被「筛选行」条件隐藏（如默认只看「进行中」，而它是待确认 / 已完成）：
+          // 自动切到「全部客户 + 全部状态」后展开，避免误以为订单不存在
+          filterCustomer = '';
+          filterStatus = '';
+          filterNotice = '';
+          buildFilterOptions();
+          render();
+          const el2 = document.querySelector('.todo-item[data-id="' + m.todoId + '"]');
+          if (el2) {
+            el2.classList.add('open');
+            el2.scrollIntoView({ block: 'center', behavior: 'smooth' });
+          }
         } else {
           alert('该订单不在当前列表中（可能属于其他成员或已删除）：' + (m.todoTitle || ''));
         }
@@ -3934,6 +4128,13 @@ ${isTeamHome ? teamIntroHtml(teamPlan) : ''}    <div id="listArea"${isTeamHome ?
       if (currencyEl) currencyEl.value = 'USD';
       // 生产方选择恢复为「不指定生产方」（下次录单默认不指定）
       if (producerEl) producerEl.value = '';
+      // 新订单为「待确认」：若当前筛选条件会把它隐藏，自动切换筛选，避免「刚录入却看不到」
+      if (filterStatus && filterStatus !== 'pending') filterStatus = 'pending';
+      if (filterCustomer && filterCustomer !== String(data.todo.customer || '').trim()) {
+        filterCustomer = '';
+      }
+      filterNotice = '新订单已录入（状态：待确认）';
+      buildFilterOptions();
       render();
     } catch (err) { alert(err.message); }
   }
@@ -3941,6 +4142,27 @@ ${isTeamHome ? teamIntroHtml(teamPlan) : ''}    <div id="listArea"${isTeamHome ?
   document.getElementById('btnAdd').addEventListener('click', addTodo);
   document.getElementById('newTitle').addEventListener('keydown', (e) => {
     if (e.key === 'Enter') addTodo();
+  });
+
+  // ---------- 订单列表筛选行（客户选择 + 状态选择） ----------
+  //   两项可单选或双选；默认「全部客户 + 进行中」—— 只显示原授权可见订单中状态为「进行中」的订单，
+  //   需要查看其他状态时通过「状态」筛选（待确认 / 已完成 / 全部状态）。
+  function onFilterChanged() {
+    filterNotice = '';
+    doneVisible = 5;   // 筛选条件变化后「已完成」的折叠计数重置
+    render();
+  }
+  document.getElementById('filterCustomer').addEventListener('change', function () {
+    filterCustomer = this.value;
+    onFilterChanged();
+  });
+  document.getElementById('filterStatus').addEventListener('change', function () {
+    filterStatus = this.value;
+    onFilterChanged();
+  });
+  document.getElementById('btnFilterClear').addEventListener('click', function () {
+    resetFilters();
+    onFilterChanged();
   });
 
 
